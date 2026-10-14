@@ -5345,6 +5345,18 @@ function setSpectatorMode(on){
     updateSpectatorTracker(Array.from(calledNumbersSet||[]));
   }
 }
+// Rule: while a round is running, a player WITHOUT a cartela is always a spectator ("Watching Only", Refresh locked),
+// whatever order the messages arrived in or what was restored from the saved state.
+function enforceSpectatorDefault(){
+  try{
+    const g=document.getElementById('screenGame');
+    if(!g||!g.classList.contains('active')) return;
+    if(myCardId||myCardId2||myCardId3||myCardId4) return;
+    if(activeGamePhase!=='playing'&&activeGamePhase!=='spectating') return;
+    if(!g.classList.contains('spectator-mode')) renderSpectatorView({calledNumbers:Array.from(calledNumbersSet||[]),playerCount:activePlayers.length||0});
+  }catch(e){}
+}
+setInterval(enforceSpectatorDefault,500);
 function renderSpectatorView(msg={}){
   activeGamePhase='spectating';
   activeCountdownLeft=0;
