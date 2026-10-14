@@ -5802,6 +5802,9 @@ function finishPostGameReset(msg={}){
     setBalance(msg.balance);
   }
   resetTrackerBoard(); setBingoBtn('idle'); resetSlotUI();
+  if(Array.isArray(msg.pool)&&msg.pool.length){ cardPool=msg.pool; try{ renderCardPool(cardPool); }catch(e){} }   // fresh, empty board at once
+  setSpectatorMode(false);            // a spectator of the finished round starts the next one clean
+  activeGamePhase='none'; activeCountdownLeft=0;
   document.getElementById('cdCountdown').innerText=T('waitingPlayers');
 
   navGo('screenCards','navCards');
@@ -6152,19 +6155,27 @@ function handle(msg){
       renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
       followGame();
       break;
-    case 'gameStart':
-      activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
+    case 'gameStart': {
+      // The server sends 'yourCard' (players) or 'spectating' (everybody else) BEFORE this broadcast.
+      // A player without cartelas must stay a spectator: "Watching Only" stays on and the Refresh button stays locked.
+      const iPlayThisRound=!!(myCardId||myCardId2||myCardId3||myCardId4);
       restoringActiveGame=false;
-      setSpectatorMode(false);
       document.getElementById('potVal').innerText=`${msg.pot} ETB`;
       syncPlayerAreaStats(msg);
       resetAutomaticGameState();
       resetTrackerBoard(); claimWindowOpen=false;
       for(const k in pendingCardSelections) delete pendingCardSelections[k];
       updateActivePlayers(msg.players||msg.activePlayers||[]);
-      renderBothCards();
-      refreshCardCells();
+      if(iPlayThisRound){
+        activeGamePhase='playing'; activeCountdownLeft=0; saveActiveGameState('playing');
+        setSpectatorMode(false);
+        renderBothCards();
+        refreshCardCells();
+      }else{
+        renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:[],pot:msg.pot});
+      }
       followGame(); break;
+    }
 
     case 'reconnected':
       pendingStakeJoin=null;

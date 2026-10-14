@@ -630,6 +630,14 @@ function broadcastCardPool(room){
   const cardCount=room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0);
   room.players.forEach(p=>send(p.ws,{roomId:room.roomId,stakeId:room.stakeId,type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:getPlayerCardIds(p).includes(c.id)})),playerCount:cardCount,stakeAmount:room.stake}));
 }
+// The full pool for ONE connection (a player joining or re-linking). Sending it to everybody here made every
+// reconnect cost the whole room a 400-600 card message: after a round all N clients reconnect, i.e. N x N pool messages.
+function sendCardPoolTo(room,p,ws){
+  const base=getCardPoolForRoom(room).map(c=>({id:c.id,taken:room.takenCardIds.has(c.id)}));
+  const mine=new Set(getPlayerCardIds(p));
+  const cardCount=room.players.reduce((sum,x)=>sum+getPlayerCardCount(x),0);
+  send(ws,{roomId:room.roomId,stakeId:room.stakeId,type:'cardPoolUpdate',pool:base.map(c=>({...c,takenByMe:mine.has(c.id)})),playerCount:cardCount,stakeAmount:room.stake});
+}
 // Lightweight update: tell everyone in the room only WHICH card(s) changed state,
 // instead of re-sending the entire 400-card array on every single pick.
 // This is the #1 fix for handling 400 concurrent players smoothly.
@@ -1375,7 +1383,7 @@ wss.on('connection',(ws,req)=>{
             playerCount:room.players.reduce((sum,p)=>getPlayerCardCount(p)+sum,0),
             stakeAmount:room.stake,
             ...selectionPayload(ep)});
-          broadcastCardPool(room);
+          sendCardPoolTo(room,ep,ws);        // only this connection needs the pool
           broadcastLobby();
         }
 
@@ -1462,7 +1470,7 @@ wss.on('connection',(ws,req)=>{
                       playerCount:existingRoom.players.filter(p=>p.hasPaid).length,
                       stakeAmount:existingRoom.stake,
                       ...selectionPayload(ep)});
-                    broadcastCardPool(existingRoom);
+                    sendCardPoolTo(existingRoom,ep,ws);
                   }
                   broadcastLobby();
                   break;
@@ -1501,7 +1509,7 @@ wss.on('connection',(ws,req)=>{
 
               send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,status:room.status,playerCount:room.players.reduce((sum,p)=>sum+getPlayerCardCount(p),0),stakeAmount:room.stake});
 
-              broadcastCardPool(room); broadcastLobby();
+              sendCardPoolTo(room,room.players[room.players.length-1],ws); broadcastLobby();
 
                  const readyPlayers=room.players.filter(p=>getPlayerCardCount(p)>0).length;
 
