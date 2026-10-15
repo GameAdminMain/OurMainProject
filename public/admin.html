@@ -88,6 +88,7 @@ summary{cursor:pointer}
   <button data-t="rc" role="tab">Reconciliation</button>
   <button data-t="st" role="tab">Safety settings</button>
   <button data-t="er" role="tab">Page errors</button>
+  <button data-t="bk" role="tab">Backup</button>
 </nav>
 
 <section id="ov" class="on">
@@ -128,6 +129,20 @@ summary{cursor:pointer}
     <p class="msg">Applies to every new withdrawal request. Only a main admin can change it. Changes take effect immediately.</p>
     <form class="set" id="setForm"></form>
     <div class="row"><button class="primary" id="setSave">Save</button><span class="msg" id="setMsg"></span></div></div>
+</section>
+
+<section id="bk">
+  <div class="card"><h2>Database backup</h2>
+    <p class="msg">Creates a full copy of the database (every table, function and row) and downloads it as <code>bbpbackup.sql</code>. It reads from the server's <code>DATABASE_URL</code>. Only the main admin can do this; the file contains all player and money data, so keep it private.</p>
+    <div id="bkInfo" class="msg">Loading…</div>
+    <div class="row"><button class="primary" id="bkGo">⬇ Download backup (bbpbackup.sql)</button><span class="msg" id="bkMsg"></span></div>
+    <details><summary class="msg">Install pg_dump / restore the file</summary>
+      <pre>pg_dump must exist on the data server. On Railway the dependable way is a Dockerfile: save the supplied
+Dockerfile.data_server as "Dockerfile" next to data_server.js (set PG_MAJOR to your database version or newer), then redeploy.
+
+Restore into an empty database:
+psql "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" -v ON_ERROR_STOP=1 -f bbpbackup.sql</pre></details>
+  </div>
 </section>
 
 <section id="er">
@@ -179,13 +194,38 @@ summary{cursor:pointer}
       applyRole(); loadAll(); clearInterval(timer); timer=setInterval(function(){ if(!document.hidden) loadAll(true); },20000);
     }catch(e){ gate(e.auth?(tg?'Access denied: only the main admin and statistics admins can open this dashboard.':(token?'Not authorised for this dashboard.':'')):('Cannot reach the data server: '+e.message)); if(e.auth&&!tg&&token){ try{ sessionStorage.removeItem('adm_tok'); }catch(_){} } }
   }
-  function applyRole(){ var main=role==='main'; ['rcRun','stGo','setSave'].forEach(function(i){ $(i).disabled=!main; $(i).title=main?'':'Main admin only'; }); }
+  function applyRole(){ var main=role==='main'; ['rcRun','stGo','setSave','bkGo'].forEach(function(i){ $(i).disabled=!main; $(i).title=main?'':'Main admin only'; }); }
 
   /* ---------- tabs ---------- */
   $('tabs').onclick=function(e){ var b=e.target.closest('button[data-t]'); if(!b) return; setTab(b.dataset.t); };
   function setTab(t){ tab=t; document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('on',b.dataset.t===t); b.setAttribute('aria-selected',b.dataset.t===t); });
     document.querySelectorAll('main section').forEach(function(s){ s.classList.toggle('on',s.id===t); }); loadAll(true); }
   $('refresh').onclick=function(){ loadAll(); };
+
+  /* ---------- backup ---------- */
+  var bkReady=false;
+  function fmtBytes(b){ b=Number(b)||0; if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; if(b<1073741824) return (b/1048576).toFixed(1)+' MB'; return (b/1073741824).toFixed(2)+' GB'; }
+  function renderBackup(d){
+    var el=$('bkInfo');
+    if(!d){ el.textContent='Only the main admin can download a backup.'; $('bkGo').disabled=true; return; }
+    bkReady=!!d.ready;
+    var h='Database: <b>'+esc(d.dbName||'?')+'</b>'+(d.dbBytes!=null?' · size on disk '+fmtBytes(d.dbBytes):'')+(d.tool?' · '+esc(d.tool):'');
+    if(d.problem) h+='<br><span class="st serious"><span aria-hidden="true">◆</span>'+esc(d.problem)+'</span>';
+    else h+='<br><span class="st good"><span aria-hidden="true">✔</span>Ready</span>';
+    if(d.last){ h+='<br>Last backup: '+when(d.last.at)+' · '+(d.last.ok?'<span class="st good"><span aria-hidden="true">✔</span>'+fmtBytes(d.last.bytes)+' in '+Math.max(1,Math.round(d.last.ms/1000))+' s</span>':'<span class="st crit"><span aria-hidden="true">✖</span>failed: '+esc(d.last.error||'')+'</span>'); }
+    el.innerHTML=h;
+    $('bkGo').disabled=!(role==='main'&&d.ready&&!d.running);
+  }
+  $('bkGo').onclick=async function(){
+    var b=$('bkGo'), m=$('bkMsg'); b.disabled=true; m.textContent='Preparing the download link…';
+    try{
+      var t=await api('backup/ticket',{method:'POST',body:{}});
+      var url=base+t.url;
+      m.textContent='The download starts now. The database is being exported, large databases take a minute.';
+      if(tg&&tg.openLink) tg.openLink(url); else window.location.href=url;
+      setTimeout(function(){ m.textContent=''; b.disabled=false; loadAll(true); },20000);
+    }catch(e){ m.textContent=e.auth?'Not authorised.':('Could not start: '+e.message); b.disabled=false; }
+  };
 
   /* ---------- charts (plain SVG, hover tooltips) ---------- */
   var tip=$('tip');
@@ -310,9 +350,9 @@ summary{cursor:pointer}
   async function loadAll(quiet){
     if(busy) return; busy=true;
     try{
-      var jobs={ov:['overview',renderOverview],qu:['queues',renderQueues],rc:['recon',renderRecon],st:['settings',renderSettings],er:['errors',renderErrors]};
+      var jobs={ov:['overview',renderOverview],qu:['queues',renderQueues],rc:['recon',renderRecon],st:['settings',renderSettings],er:['errors',renderErrors],bk:['backup/info',renderBackup]};
       var keys=[tab]; if(tab!=='ov') keys.push('ov');
-      await Promise.all(keys.map(async function(k){ var r=await api(jobs[k][0]); jobs[k][1](r); }));
+      await Promise.all(keys.map(async function(k){ if(k==='bk'&&role!=='main'){ renderBackup(null); return; } var r=await api(jobs[k][0]); jobs[k][1](r); }));
       $('upd').textContent='Updated '+new Date().toLocaleTimeString();
     }catch(e){ if(e.auth){ gate('Session expired.'); } else $('upd').textContent='Error: '+e.message; }
     finally{ busy=false; }

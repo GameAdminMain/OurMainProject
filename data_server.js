@@ -15,6 +15,7 @@ const http=require('http');
 const bingoDb=require('./db');
 const { BOT_TOKEN, ALLOW_UNVERIFIED_AUTH, resolveTelegramId, verifyInitData } = require('./tg_auth');
 const crypto=require('crypto');
+const { spawn, execFile }=require('child_process');
 const reconcile=require('./reconcile');
 
 const PORT=process.env.PORT||3001;
@@ -311,6 +312,92 @@ app.post('/api/admin/recon/run',adminRoute(true,async(req,res)=>{
 }));
 
 const SETTINGS_FIELDS={enabled:'bool',daily_limit_amount:[0,1e7],daily_limit_count:[0,1000],review_threshold:[0,1e7],cooldown_after_deposit_min:[0,10080],min_play_ratio:[0,100],block_low_play:'bool',new_account_hours:[0,8760]};
+
+// ─── DATABASE BACKUP (admin.html -> Backup tab) ───────────────
+// MAIN admin only. Runs `pg_dump` against DATABASE_URL and streams the result as the file "bbpbackup.sql" (plain SQL: schema +
+// data, restorable with psql). The download uses a one-time link that is valid for 60 seconds, because the Telegram app
+// cannot save files fetched with scripts; the link is only handed out to a signed-in main admin.
+// Needs the PostgreSQL client tools (pg_dump) on this server and a pg_dump version >= the database version.
+const BACKUP_FILE='bbpbackup.sql';
+const backupTickets=new Map();
+let backupRunning=false, lastBackup=null;
+function pgEnv(){
+  const raw=process.env.DATABASE_URL||'';
+  const u=new URL(raw);
+  const env={...process.env,PGHOST:u.hostname,PGPORT:u.port||'5432',PGUSER:decodeURIComponent(u.username),PGPASSWORD:decodeURIComponent(u.password),PGDATABASE:decodeURIComponent(u.pathname.replace(/^\//,'')),PGCONNECT_TIMEOUT:'15'};
+  delete env.DATABASE_URL;
+  const sm=u.searchParams.get('sslmode');
+  env.PGSSLMODE=sm||(String(process.env.DB_SSL||'').toLowerCase()==='false'?'disable':'require');   // same rule as db.js: SSL on unless DB_SSL=false
+  return env;
+}
+function run(cmd,args,env){
+  return new Promise(resolve=>execFile(cmd,args,{env,timeout:20000,maxBuffer:1<<20},(err,out,errOut)=>resolve({err,out:String(out||'').trim(),errOut:String(errOut||'').trim()})));
+}
+app.get('/api/admin/backup/info',adminRoute(true,async(req,res)=>{
+  const out={file:BACKUP_FILE,tool:null,toolMajor:null,dbName:null,dbBytes:null,dbMajor:null,ready:false,problem:null,running:backupRunning,last:lastBackup};
+  const v=await run('pg_dump',['--version']);
+  if(v.err){ out.problem=(v.err.code==='ENOENT')?'pg_dump is not installed on the data server. See the install notes below (Dockerfile.data_server).':'pg_dump failed: '+(v.errOut||v.err.message).slice(0,200); }
+  else{ out.tool=v.out; const m=v.out.match(/(\d+)(?:\.\d+)?\s*(?:\(|$)/); out.toolMajor=m?Number(m[1]):null; }
+  try{
+    const r=await aq(`SELECT current_database() AS db, pg_database_size(current_database())::bigint AS bytes, current_setting('server_version_num')::int/10000 AS major`);
+    out.dbName=r[0].db; out.dbBytes=Number(r[0].bytes); out.dbMajor=Number(r[0].major);
+  }catch(e){ out.problem=out.problem||('Cannot read the database: '+e.message.slice(0,120)); }
+  if(!out.problem&&out.toolMajor&&out.dbMajor&&out.toolMajor<out.dbMajor) out.problem=`pg_dump is version ${out.toolMajor} but the database is version ${out.dbMajor}: install pg_dump ${out.dbMajor} or newer.`;
+  out.ready=!out.problem&&!!out.tool;
+  res.json(out);
+}));
+app.post('/api/admin/backup/ticket',adminRoute(true,async(req,res,who)=>{
+  if(backupRunning) return res.status(429).json({error:'A backup is already running. Wait for it to finish.'});
+  for(const [k,v] of backupTickets) if(v.exp<Date.now()) backupTickets.delete(k);
+  const t=crypto.randomBytes(24).toString('hex');
+  backupTickets.set(t,{tid:who.tid||null,via:who.via,exp:Date.now()+60000});
+  console.log(`[admin] backup link issued to ${who.via==='token'?'token login':'telegram id '+who.tid}`);
+  res.json({url:'/api/admin/backup/download?t='+t,file:BACKUP_FILE});
+}));
+app.get('/api/admin/backup/download',async(req,res)=>{
+  const fail=(code,msg)=>{ res.setHeader('Cache-Control','no-store'); res.status(code).type('text/plain').send(msg); };
+  const t=String(req.query.t||'');
+  const tk=backupTickets.get(t); backupTickets.delete(t);                   // single use
+  if(!tk||tk.exp<Date.now()) return fail(403,'This backup link has expired. Go back to the dashboard and press "Download backup" again.');
+  try{   // the person must still be a main admin right now
+    if(tk.via==='telegram'){
+      const r=await bingoDb.rawQuery(`SELECT 1 FROM users WHERE telegram_id=$1 AND is_admin=TRUE AND admin_role='main' AND is_active=TRUE AND is_blocked=FALSE`,[tk.tid]);
+      if(!r.rows.length) return fail(403,'Not authorised.');
+    }
+  }catch(e){ return fail(500,'Could not check access: '+e.message.slice(0,100)); }
+  if(backupRunning) return fail(429,'A backup is already running.');
+  let env; try{ env=pgEnv(); }catch(e){ return fail(500,'DATABASE_URL is not valid.'); }
+  backupRunning=true;
+  const started=Date.now(); let bytes=0, sent=false, errText='', finished=false;
+  console.log(`[admin] BACKUP started by ${tk.via==='token'?'token login':'telegram id '+tk.tid}`);
+  const child=spawn('pg_dump',['--no-owner','--no-privileges','--format=plain','--encoding=UTF8'],{env,stdio:['ignore','pipe','pipe']});
+  const killer=setTimeout(()=>{ errText+='\ntimed out after 15 minutes'; try{ child.kill('SIGKILL'); }catch(e){} },15*60*1000);
+  const done=(ok,msg)=>{
+    if(finished) return; finished=true; clearTimeout(killer); backupRunning=false;
+    lastBackup={at:new Date().toISOString(),by:tk.via==='token'?'token':tk.tid,ok,bytes,ms:Date.now()-started,error:ok?null:String(msg||'').slice(0,300)};
+    console.log(ok?`[admin] BACKUP finished: ${bytes} bytes in ${lastBackup.ms} ms`:`[admin] BACKUP FAILED: ${lastBackup.error}`);
+  };
+  child.stderr.on('data',d=>{ if(errText.length<4000) errText+=d.toString(); });
+  child.on('error',e=>{
+    done(false,e.code==='ENOENT'?'pg_dump is not installed on the data server':e.message);
+    if(!sent){ sent=true; fail(e.code==='ENOENT'?501:500,e.code==='ENOENT'?'pg_dump is not installed on the data server.':'Backup failed: '+e.message); }
+  });
+  child.stdout.on('data',chunk=>{
+    if(!sent){   // headers only go out once the dump really produces data, so a failure can still be reported properly
+      sent=true;
+      res.writeHead(200,{'Content-Type':'application/sql; charset=utf-8','Content-Disposition':`attachment; filename="${BACKUP_FILE}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'});
+    }
+    bytes+=chunk.length;
+    if(!res.write(chunk)){ child.stdout.pause(); res.once('drain',()=>child.stdout.resume()); }
+  });
+  child.on('close',code=>{
+    if(finished) return;
+    if(code===0){ done(true); if(!sent){ sent=true; res.writeHead(200,{'Content-Type':'application/sql; charset=utf-8','Content-Disposition':`attachment; filename="${BACKUP_FILE}"`}); } res.end(); }
+    else{ done(false,errText.trim()||('pg_dump exited with code '+code)); if(!sent){ sent=true; fail(500,'Backup failed:\n'+(errText.trim()||('pg_dump exited with code '+code)).slice(0,800)); } else res.destroy(); }
+  });
+  res.on('close',()=>{ if(!finished){ try{ child.kill('SIGTERM'); }catch(e){} done(false,'download cancelled'); } });
+});
+
 app.get('/api/admin/settings',adminRoute(false,async(req,res)=>{
   const r=await aq(`SELECT * FROM withdrawal_safety_settings WHERE id=1`,[]);
   res.json({settings:r[0]||null,fields:SETTINGS_FIELDS});
