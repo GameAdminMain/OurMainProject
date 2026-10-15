@@ -69,9 +69,9 @@ summary{cursor:pointer}
 <main>
 <div id="gate" hidden>
   <h1>Admin dashboard</h1>
-  <p class="msg">Open it from the bot with /dashboard, or enter the admin token.</p>
-  <input id="tok" type="password" placeholder="Admin token" autocomplete="off" aria-label="Admin token">
-  <button class="primary" id="tokGo">Open</button>
+  <p class="msg" id="gateHint">Restricted: only the main admin and statistics admins can open this dashboard. Open it from the bot's admin menu (📊 Open dashboard).</p>
+  <input id="tok" type="password" placeholder="Admin token" autocomplete="off" aria-label="Admin token" hidden>
+  <button class="primary" id="tokGo" hidden>Open</button>
   <div class="msg" id="gateMsg"></div>
 </div>
 
@@ -165,6 +165,9 @@ summary{cursor:pointer}
 
   /* ---------- gate ---------- */
   function gate(msg){ $('app').hidden=true; $('gate').hidden=false; $('gateMsg').textContent=msg||''; clearInterval(timer); }
+  // the token box exists only if the server allows token login (off by default: main and statistics admins only)
+  var tokenLogin=false;
+  var modeP=fetch(base+'/api/admin/mode',{cache:'no-store'}).then(function(r){return r.json();}).then(function(m){ tokenLogin=!!(m&&m.tokenLogin); if(tokenLogin&&!tg){ $('tok').hidden=false; $('tokGo').hidden=false; } }).catch(function(){});
   $('tokGo').onclick=async function(){ token=$('tok').value.trim(); try{ sessionStorage.setItem('adm_tok',token); }catch(e){} start(); };
   $('tok').addEventListener('keydown',function(e){ if(e.key==='Enter') $('tokGo').click(); });
 
@@ -174,7 +177,7 @@ summary{cursor:pointer}
       $('gate').hidden=true; $('app').hidden=false;
       $('who').textContent=(role==='main'?'Main admin':'Statistics admin')+' · '+w.tz;
       applyRole(); loadAll(); clearInterval(timer); timer=setInterval(function(){ if(!document.hidden) loadAll(true); },20000);
-    }catch(e){ gate(e.auth?(token||tg?'Not authorised for this dashboard.':''):('Cannot reach the data server: '+e.message)); if(e.auth&&!tg&&token){ try{ sessionStorage.removeItem('adm_tok'); }catch(_){} } }
+    }catch(e){ gate(e.auth?(tg?'Access denied: only the main admin and statistics admins can open this dashboard.':(token?'Not authorised for this dashboard.':'')):('Cannot reach the data server: '+e.message)); if(e.auth&&!tg&&token){ try{ sessionStorage.removeItem('adm_tok'); }catch(_){} } }
   }
   function applyRole(){ var main=role==='main'; ['rcRun','stGo','setSave'].forEach(function(i){ $(i).disabled=!main; $(i).title=main?'':'Main admin only'; }); }
 
@@ -314,7 +317,11 @@ summary{cursor:pointer}
     }catch(e){ if(e.auth){ gate('Session expired.'); } else $('upd').textContent='Error: '+e.message; }
     finally{ busy=false; }
   }
-  if(tg||token) start(); else gate('');
+  if(tg) start();
+  else modeP.then(function(){
+    if(token&&tokenLogin) start();
+    else { if(token){ try{ sessionStorage.removeItem('adm_tok'); }catch(e){} token=''; } gate(''); }
+  });
 })();
 </script>
 </body>

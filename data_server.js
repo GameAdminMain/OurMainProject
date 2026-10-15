@@ -189,23 +189,32 @@ app.get('/api/verify/:code',async(req,res)=>{
 
 
 // ─── ADMIN DASHBOARD (admin.html) ─────────────────────────────
-// Access: a Telegram Web App opened by a MAIN or STATISTICS admin of the bot (signed initData), or the secret ADMIN_TOKEN
-// (Authorization: Bearer ...). Everything is read-only except: statement import, "run reconciliation", settings (MAIN only).
+// Access: ONLY a Telegram Web App opened by an active, unblocked MAIN or STATISTICS admin of the bot (signed initData;
+// the role is read from the users table on every check, so removing an admin locks him out within 20 seconds).
+// The shared secret ADMIN_TOKEN works ONLY if ADMIN_TOKEN_LOGIN=on is set explicitly (off by default).
+// Everything is read-only except: statement import, "run reconciliation", settings (MAIN only).
 const DASH_TZ=/^[A-Za-z_\/+\-0-9]{2,40}$/.test(process.env.DASH_TZ||'')?process.env.DASH_TZ:'Africa/Addis_Ababa';
-const adminCache=new Map(), adminFails=new Map();
+const adminCache=new Map(), adminFails=new Map(), adminDeniedLog=new Map();
+const ADMIN_TOKEN_LOGIN=String(process.env.ADMIN_TOKEN_LOGIN||'').toLowerCase()==='on'&&!!process.env.ADMIN_TOKEN;
+if(process.env.ADMIN_TOKEN&&!ADMIN_TOKEN_LOGIN) console.log('[admin] ADMIN_TOKEN is set but token login is OFF (set ADMIN_TOKEN_LOGIN=on to allow it): the dashboard is open to main and statistics admins only');
 function safeEq(a,b){ const x=Buffer.from(String(a)), y=Buffer.from(String(b)); return x.length===y.length&&crypto.timingSafeEqual(x,y); }
 async function adminAuth(req){
   const auth=String(req.headers.authorization||'');
-  if(process.env.ADMIN_TOKEN&&auth.startsWith('Bearer ')&&safeEq(auth.slice(7),process.env.ADMIN_TOKEN)) return {role:'main',via:'token'};
+  if(ADMIN_TOKEN_LOGIN&&auth.startsWith('Bearer ')&&safeEq(auth.slice(7),process.env.ADMIN_TOKEN)) return {role:'main',via:'token'};
   const init=req.headers['x-telegram-init-data'];
   if(!init) return null;
   const tid=verifyInitData(init);                    // always the signed data, never a claimed id
   if(!tid) return null;
   const hit=adminCache.get(tid);
-  if(hit&&Date.now()-hit.t<60000) return hit.role?{role:hit.role,via:'telegram',tid}:null;
+  if(hit&&Date.now()-hit.t<20000) return hit.role?{role:hit.role,via:'telegram',tid}:null;
   const r=await bingoDb.rawQuery(`SELECT admin_role FROM users WHERE telegram_id=$1 AND is_admin=TRUE AND is_active=TRUE AND is_blocked=FALSE LIMIT 1`,[tid]);
   const role=r.rows[0]&&['main','statistics'].includes(r.rows[0].admin_role)?r.rows[0].admin_role:null;
   adminCache.set(tid,{t:Date.now(),role});
+  if(adminCache.size>5000) adminCache.clear();
+  if(!role){   // audit trail: somebody who is not an allowed admin tried to open the dashboard (logged once per 10 min per account)
+    const last=adminDeniedLog.get(tid)||0;
+    if(Date.now()-last>600000){ adminDeniedLog.set(tid,Date.now()); if(adminDeniedLog.size>5000) adminDeniedLog.clear(); console.warn('[admin] access DENIED for telegram id '+tid+' (not an active main/statistics admin)'); }
+  }
   return role?{role,via:'telegram',tid}:null;
 }
 function adminRoute(needMain,fn){
@@ -226,6 +235,8 @@ function adminRoute(needMain,fn){
 }
 const aq=(text,params)=>bingoDb.rawQuery(text,params).then(r=>r.rows);
 
+// public: tells the page whether the token box may be shown at all (no secret is revealed)
+app.get('/api/admin/mode',(req,res)=>{ res.setHeader('Cache-Control','no-store'); res.json({tokenLogin:ADMIN_TOKEN_LOGIN}); });
 app.get('/api/admin/whoami',adminRoute(false,async(req,res,who)=>res.json({role:who.role,via:who.via,tz:DASH_TZ})));
 
 app.get('/api/admin/overview',adminRoute(false,async(req,res)=>{
