@@ -128,6 +128,8 @@ function paidPlayerList(room){ return paidPlayersOf(room).map(p=>({playerId:p.pl
 // ─── CONFIG ──────────────────────────────────────────────────
 const LOBBY_WAIT_MS    = 30000;
 const CALL_INTERVAL_MS = 5000;
+// delay before the FIRST number of a round (later numbers use CALL_INTERVAL_MS); env FIRST_CALL_DELAY_MS, 0-60000 ms
+const FIRST_CALL_DELAY_MS = 2000;//(()=>{ const v=Number(process.env.FIRST_CALL_DELAY_MS); return Number.isFinite(v)&&v>=0&&v<=60000?Math.round(v):2000; })();
 const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
 const TOTAL_CARDS      = 600;   // largest card_count a room may use (your rooms use 600)
@@ -911,7 +913,7 @@ async function startGame(room){
   });
 
   if(room.dbGameId) bingoDb.markBingoGameStarted(room.dbGameId).catch(e=>console.error('markBingoGameStarted:',e.message));   // bingo_games.started_at
-  broadcast(room,{type:'gameStart',pot:room.pot,playerCount:livePlayerCount(room),players:paidPlayerList(room)});
+  broadcast(room,{type:'gameStart',firstCallMs:FIRST_CALL_DELAY_MS,pot:room.pot,playerCount:livePlayerCount(room),players:paidPlayerList(room)});
   // The round is running: its picks now belong to the game (kept on the players and in participantCards),
   // so the card-selection board of this room is emptied for everybody at once.
   room.takenCardIds=new Set();
@@ -919,7 +921,10 @@ async function startGame(room){
   broadcastLobby(); scheduleNextCall(room);
 }
 
-function scheduleNextCall(room){room.callTimer=setTimeout(()=>callNumber(room),CALL_INTERVAL_MS);}
+function scheduleNextCall(room){
+  const first=!room.calledNumbers||room.calledNumbers.length===0;
+  room.callTimer=setTimeout(()=>callNumber(room),first?FIRST_CALL_DELAY_MS:CALL_INTERVAL_MS);
+}
 
 function callNumber(room){
   if(room.status!=='playing') return;

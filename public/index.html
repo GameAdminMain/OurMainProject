@@ -4476,7 +4476,7 @@ html body #screenProfile:not(#q1):not(#q2) .pf-t span{display:block;font-size:10
 html body #screenProfile:not(#q1):not(#q2) .pf-tbl{border-radius:16px;overflow:hidden;color:#2b1a5a;background:linear-gradient(180deg,#f4f2ff,#dcd6fa);box-shadow:0 6px 14px rgba(0,0,0,.3)}
 html body #screenProfile:not(#q1):not(#q2) .pf-heads{display:grid;grid-template-columns:1fr .8fr .9fr 1.5fr;gap:5px;padding:9px 10px 6px}
 html body #screenProfile:not(#q1):not(#q2) .pf-heads div{height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:clamp(9.5px,2.8vw,10.5px);font-weight:900;letter-spacing:.5px;white-space:nowrap}
-html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(1){background:#2f7cff}html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(2){background:#a24bf0}html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(3){background:#f59e0b}html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(4){background:#16b84a}
+html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(1){background:#2f7cff}html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(2){background:#f59e0b}html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(3){background:#a24bf0}html body #screenProfile:not(#q1):not(#q2) .pf-heads div:nth-child(4){background:#16b84a}
 html body #screenProfile:not(#q1):not(#q2) .pf-tr{display:grid;grid-template-columns:1fr .8fr .9fr 1.5fr;align-items:center;gap:5px;padding:7px 10px;border-top:1px dashed rgba(91,63,168,.3)}
 html body #screenProfile:not(#q1):not(#q2) .pf-st{display:flex;align-items:center;gap:8px;font-weight:900;font-size:clamp(12px,3.6vw,14px);min-width:0;white-space:nowrap}
 html body #screenProfile:not(#q1):not(#q2) .pf-coin{flex:0 0 auto;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:900;font-size:13px;border:2px solid rgba(255,255,255,.55);
@@ -4971,8 +4971,14 @@ html body #screenLobby:not(#q1):not(#q2) .lobby-conn.error{color:#ffe7b8;border-
 
     <div class="pf-sec"><span data-lt="pfByStake">Wins by stake</span></div>
     <div class="pf-tbl">
-      <div class="pf-heads"><div data-lt="pfStake">STAKE</div><div data-lt="pfWins">WINS</div><div data-lt="pfPlayed">PLAYED</div><div data-lt="pfWinAmt">WIN AMOUNT</div></div>
+      <div class="pf-heads"><div data-lt="pfStake">STAKE</div><div data-lt="pfPlayed">PLAYED</div><div data-lt="pfWins">WINS</div><div data-lt="pfWinAmt">WIN AMOUNT</div></div>
       <div id="pfRows"></div>
+    </div>
+    <div class="pf-sec"><span data-lt="pfRecent">Recent games</span></div>
+    <div class="pf-rc">
+      <div class="pf-rtabs"><button type="button" id="pfRtP" data-lt="pfRPlayed">Played</button><button type="button" id="pfRtW" data-lt="pfRWon">Won</button></div>
+      <div class="pf-rhead"><div data-lt="pfGameId">GAME ID</div><div data-lt="pfStake">STAKE</div><div id="pfRAmtH" data-lt="pfRes">RESULT</div></div>
+      <div id="pfRRows"><div class="pf-none" data-lt="pfRTap">Tap Played or Won to see your last 10 games</div></div>
     </div>
     <button type="button" class="help-btn" onclick="gotoHelp()" data-lt="helpBtn">ℹ️ How to play &amp; rules</button>
     <div id="profileStatus" class="profile-status" style="display:none"></div>
@@ -5582,6 +5588,45 @@ function renderUserProfile(u, history=[]){
   if(profileBalEl&&!currentWallets) profileBalEl.innerText=Number.isFinite(balance)&&balance>=0?balance.toFixed(2):'0.00';
   renderStakeTable(u?.stake_stats);
 }
+
+// Recent games (last 10 played / won): fetched only when a tab is tapped, one request for both lists, cached 60 s
+let recentGames=null, recentAt=0, recentTab='', recentBusy=false;
+function renderRecent(){
+  const box=document.getElementById('pfRRows'); if(!box) return;
+  const bp=document.getElementById('pfRtP'), bw=document.getElementById('pfRtW');
+  if(bp) bp.classList.toggle('on',recentTab==='played'); if(bw) bw.classList.toggle('on',recentTab==='won');
+  const h=document.getElementById('pfRAmtH'); if(h) h.textContent=recentTab==='won'?T('pfRWinH'):T('pfRes');
+  if(!recentTab) return;
+  if(!recentGames){ box.innerHTML='<div class="pf-none">\u2026</div>'; return; }
+  const list=recentGames[recentTab]||[];
+  if(!list.length){ box.innerHTML='<div class="pf-none">'+T('noGames')+'</div>'; return; }
+  const frag=document.createDocumentFragment();
+  list.forEach(g=>{
+    const d=document.createElement('div'); d.className='pf-rr';
+    const a=document.createElement('div'); a.textContent=g.code;
+    const b=document.createElement('div'); b.textContent=Number(g.stake).toLocaleString('en-US');
+    const c=document.createElement('div');
+    if(g.won>0){ const x=document.createElement('b'); x.textContent='+'+Math.floor(g.won).toLocaleString('en-US'); c.appendChild(x); }
+    else{ c.className='lo'; c.textContent='\u2014'; }
+    d.append(a,b,c); frag.appendChild(d);
+  });
+  box.replaceChildren(frag);
+}
+async function openRecent(tab){
+  recentTab=tab; renderRecent();
+  if(recentBusy||(recentGames&&Date.now()-recentAt<60000)) return;
+  const id=normalizeTelegramId(telegramId||getTelegramId()); if(!id) return;
+  recentBusy=true;
+  try{
+    const r=await fetch(`${DATA_BASE}/api/user/${encodeURIComponent(id)}/recent`,{headers:authHeaders()});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok) throw new Error(j.error||'failed');
+    recentGames=j; recentAt=Date.now();
+  }catch(e){ const box=document.getElementById('pfRRows'); if(box&&!recentGames) box.innerHTML='<div class="pf-none">'+T('pfRErr')+'</div>'; recentBusy=false; return; }
+  recentBusy=false; renderRecent();
+}
+document.getElementById('pfRtP')?.addEventListener('click',()=>openRecent('played'));
+document.getElementById('pfRtW')?.addEventListener('click',()=>openRecent('won'));
 let lastStakeStatsRows=null;
 function renderStakeTable(rows){
   const box=document.getElementById('pfRows');
@@ -5606,8 +5651,8 @@ function renderStakeTable(rows){
     d.className='pf-tr';
     const t=stakeAmountText(r.stake);
     d.innerHTML=`<div class="pf-st"><div class="pf-coin pf-cx${t.length>2?' pf-long':''}">${t}</div><span>ETB ${t}</span></div>`+
-                `<div class="pf-wc">${r.wins.toLocaleString('en-US')}</div>`+
                 `<div class="pf-pc">${r.played.toLocaleString('en-US')}</div>`+
+                `<div class="pf-wc">${r.wins.toLocaleString('en-US')}</div>`+
                 `<div class="pf-amt">${r.amount.toLocaleString('en-US')}</div>`;
     frag.appendChild(d);
   });
@@ -6221,7 +6266,7 @@ function handle(msg){
       renderSpectatorView({playerCount:msg.playerCount||0,calledNumbers:msg.calledNumbers||[],stakeAmount:msg.stakeAmount||0});
       followGame();
       break;
-    case 'gameStart': {
+    case 'gameStart': { try{ document.documentElement.style.setProperty('--precall-ms',(Number(msg.firstCallMs)>0?Number(msg.firstCallMs):5000)+'ms'); }catch(e){}
       // The server sends 'yourCard' (players) or 'spectating' (everybody else) BEFORE this broadcast.
       // A player without cartelas must stay a spectator: "Watching Only" stays on and the Refresh button stays locked.
       const iPlayThisRound=!!(myCardId||myCardId2||myCardId3||myCardId4);
@@ -7753,7 +7798,7 @@ html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .precall-box{
 .precall-text{font-size:clamp(14px,4.4vw,17px);font-weight:800;color:#d1b3ff;text-align:center;line-height:1.35;letter-spacing:.1px}
 .precall-bar{width:100%;height:7px;border-radius:99px;background:rgba(255,255,255,.17);overflow:hidden}
 .precall-bar>div{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#c06cf2,#a64fe8)}
-#screenGame.pre-call .precall-bar>div{animation:precallFill 5s linear forwards}
+#screenGame.pre-call .precall-bar>div{animation:precallFill var(--precall-ms,5s) linear forwards}
 @keyframes precallFill{from{width:4%}to{width:100%}}
 /* the speaker button sits in the top-right corner of that panel, the chip row is empty anyway */
 html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-game-right{position:relative}
@@ -7762,6 +7807,18 @@ html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-game-
 }
 html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-game-right > .player-called-strip .called-chips{display:none!important}
 html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-game-right > .player-call-card{margin-top:0!important}
+</style>
+<style id="pf-recent-css">
+html body #screenProfile .pf-rc{border-radius:16px;overflow:hidden;color:#2b1a5a;background:linear-gradient(180deg,#f4f2ff,#dcd6fa);box-shadow:0 6px 14px rgba(0,0,0,.3);margin-bottom:12px}
+html body #screenProfile .pf-rtabs{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:9px 10px 4px}
+html body #screenProfile .pf-rtabs button{height:30px;border:0;border-radius:8px;font-weight:900;font-size:12px;letter-spacing:.4px;color:#5b3fa8;background:#e7e2fb}
+html body #screenProfile .pf-rtabs button.on{color:#fff;background:#a24bf0}
+html body #screenProfile .pf-rtabs button#pfRtW.on{background:#16b84a}
+html body #screenProfile .pf-rhead,html body #screenProfile .pf-rr{display:grid;grid-template-columns:1.5fr .8fr 1fr;gap:5px;padding:6px 10px;align-items:center;text-align:center}
+html body #screenProfile .pf-rhead{font-size:10px;font-weight:900;color:#5b3fa8;letter-spacing:.5px}
+html body #screenProfile .pf-rr{font-weight:800;font-size:13px;border-top:1px solid rgba(91,63,168,.15)}
+html body #screenProfile .pf-rr b{color:#16a34a}
+html body #screenProfile .pf-rr .lo{color:#9a8fc4}
 </style>
 </body>
 </html>

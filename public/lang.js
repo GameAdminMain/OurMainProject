@@ -26,7 +26,7 @@ window.BETESEB_LANG = {
       hH2:'ሽልማት እና ኮሚሽን',hPrize:'እያንዳንዱ ካርቴላ የውርርዱን መጠን ያህል ያስከፍላል። ከዙሩ ጠቅላላ ውርርድ ትንሽ ኮሚሽን ይቆረጣል፤ የቀረው የሽልማት ገንዘብ ለአሸናፊው(ዎች) ይከፈላል። ሽልማቱ ዙሩ እንዳበቃ ወደ ሂሳብዎ ይጨመራል።',
       hH3:'የተጋራ ድል',hSplit:'ብዙ ተጫዋቾች በአንድ ቁጥር BINGO ካጠናቀቁ የሽልማት ገንዘቡ እኩል ይካፈላል። እያንዳንዱ ድርሻ ወደ ሙሉ ብር ዝቅ ይደረጋል፤ የሚቀሩት ጥቂት ብሮች (ከአሸናፊ ቁጥር ያነሱ) ወደ ኮሚሽን ይጨመራሉ።',
       hH4:'እርዳታ ይፈልጋሉ?',hSupport:'ይህን መተግበሪያ ዘግተው በቦቱ ቻት ውስጥ <b>/support</b> ይላኩ። ገንዘብ ማስገባት እና ማውጣት የሚደረገው በቦቱ ውስጥ ነው።',hSupportBtn:'ድጋፍን ያነጋግሩ',
-      pfPlay:'የመጫወቻ ሂሳብ',pfMain:'ዋና ሂሳብ',pfBonus:'ቦነስ',pfStats:'የእርስዎ ስታቲስቲክስ',pfGames:'የተጫወቱት',pfEarn:'ገቢ',pfWon:'ያሸነፉት',pfTotal:'ጠቅላላ',pfTotalEtb:'ጠቅላላ ETB',pfByStake:'በውርርድ መጠን ድሎች',pfStake:'ውርርድ',pfWins:'ድል',pfPlayed:'ጨዋታ',pfWinAmt:'የድል መጠን',
+      pfPlay:'የመጫወቻ ሂሳብ',pfMain:'ዋና ሂሳብ',pfBonus:'ቦነስ',pfStats:'የእርስዎ ስታቲስቲክስ',pfGames:'የተጫወቱት',pfEarn:'ገቢ',pfWon:'ያሸነፉት',pfTotal:'ጠቅላላ',pfTotalEtb:'ጠቅላላ ETB',pfByStake:'በውርርድ መጠን ድሎች',pfStake:'ውርርድ',pfWins:'ድል',pfPlayed:'ጨዋታ',pfRecent:'የቅርብ ጊዜ ጨዋታዎች',pfRPlayed:'የተጫወቱት',pfRWon:'ያሸነፉት',pfGameId:'የጨዋታ መለያ',pfRes:'ውጤት',pfRWinH:'ድል',pfRTap:'የመጨረሻ 10 ጨዋታዎችን ለማየት ይጫኑ',pfRErr:'መጫን አልተቻለም',pfWinAmt:'የድል መጠን',
       fairChip:'🔒 የዕጣ የጣት አሻራ',fairOk:'✔ ፍትሃዊ ዕጣ — የጣት አሻራው ተረጋግጧል',fairBad:'✘ የጣት አሻራው አልተመሳሰለም',fairVerify:'በገጹ ላይ አረጋግጥ ›',
       connecting:'Connecting',noconn:()=>'Reconnecting'},
   en:{hello:'Welcome back',player:'Player',online:'Online now',active:'active players',
@@ -53,7 +53,7 @@ window.BETESEB_LANG = {
       hH2:'Prize & commission',hPrize:'Each cartela costs the stake. A small commission is taken from the total stakes of the round; the rest is the prize pool and is paid to the winner(s). The prize is added to your wallet as soon as the round ends.',
       hH3:'Shared wins',hSplit:'If several players complete BINGO on the same number, the prize pool is shared equally. Each share is rounded down to a whole birr; the few leftover birr (less than one per winner) go to the commission.',
       hH4:'Need help?',hSupport:'Close this app and send <b>/support</b> in the bot chat. Deposits and withdrawals are done in the bot.',hSupportBtn:'Contact support',
-      pfPlay:'PLAY WALLET',pfMain:'MAIN WALLET',pfBonus:'BONUS',pfStats:'Your stats',pfGames:'GAMES PLAYED',pfEarn:'EARNING',pfWon:'GAMES WON',pfTotal:'Total',pfTotalEtb:'Total ETB',pfByStake:'Wins by stake',pfStake:'STAKE',pfWins:'WINS',pfPlayed:'PLAYED',pfWinAmt:'WIN AMOUNT',
+      pfPlay:'PLAY WALLET',pfMain:'MAIN WALLET',pfBonus:'BONUS',pfStats:'Your stats',pfGames:'GAMES PLAYED',pfEarn:'EARNING',pfWon:'GAMES WON',pfTotal:'Total',pfTotalEtb:'Total ETB',pfByStake:'Wins by stake',pfStake:'STAKE',pfWins:'WINS',pfPlayed:'PLAYED',pfRecent:'Recent games',pfRPlayed:'Played',pfRWon:'Won',pfGameId:'GAME ID',pfRes:'RESULT',pfRWinH:'WON',pfRTap:'Tap Played or Won to see your last 10 games',pfRErr:'Could not load',pfWinAmt:'WIN AMOUNT',
       fairChip:'🔒 Draw fingerprint',fairOk:'✔ Fair draw — fingerprint verified',fairBad:'✘ Fingerprint does not match',fairVerify:'Verify on the page ›',
       connecting:'Connecting',noconn:()=>'Reconnecting'}
 };

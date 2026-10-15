@@ -165,6 +165,44 @@ app.get('/api/user/:tid', async(req,res)=>{
 });
 
 
+// Last 10 games played and last 10 games won (one query, one request; cached 60 s per player).
+// The client only asks when the player opens the "Recent games" tabs, never with the normal profile load.
+const recentCache=new Map();   // tid -> { t, data }
+app.get('/api/user/:tid/recent',async(req,res)=>{
+  const tid=String(req.params.tid||'').trim();
+  if(!/^\d{1,20}$/.test(tid)) return res.status(400).json({error:'Missing Telegram ID'});
+  const who=resolveTelegramId(req.headers['x-telegram-init-data'],tid);
+  if(!who||who!==tid) return res.status(401).json({error:'Open the game from Telegram'});
+  try{
+    let hit=recentCache.get(tid);
+    if(!hit||Date.now()-hit.t>60000){
+      const q=await bingoDb.rawQuery(
+        `WITH me AS (SELECT id FROM users WHERE telegram_id=$1),
+         pl AS (
+           SELECT g.game_code, g.stake_amount, bp.amount_won, bp.id
+           FROM bingo_participants bp JOIN me ON me.id=bp.user_id
+           JOIN bingo_games g ON g.id=bp.game_id AND g.status='completed'
+           ORDER BY bp.id DESC LIMIT 10),
+         wn AS (
+           SELECT g.game_code, g.stake_amount, bp.amount_won, bp.id
+           FROM bingo_participants bp JOIN me ON me.id=bp.user_id
+           JOIN bingo_games g ON g.id=bp.game_id AND g.status='completed'
+           WHERE bp.amount_won>0 AND bp.is_disqualified=FALSE
+           ORDER BY bp.id DESC LIMIT 10)
+         SELECT 'p' k,* FROM pl UNION ALL SELECT 'w' k,* FROM wn`,[tid]);
+      const shape=r=>({code:r.game_code,stake:Number(r.stake_amount)||0,won:Number(r.amount_won)||0});
+      hit={t:Date.now(),data:{played:q.rows.filter(r=>r.k==='p').map(shape),won:q.rows.filter(r=>r.k==='w').map(shape)}};
+      recentCache.set(tid,hit);
+      if(recentCache.size>5000){ const cut=Date.now()-60000; for(const [k,v] of recentCache) if(v.t<cut) recentCache.delete(k); }
+    }
+    res.setHeader('Cache-Control','private, max-age=30');
+    return res.json(hit.data);
+  }catch(e){
+    console.error('GET /api/user/:tid/recent:',e.stack||e.message);
+    return res.status(500).json({error:'Could not load games'});
+  }
+});
+
 // ─── PROVABLY FAIR: public data for /verify ───────────────────
 // The commitment is public from the start; the call order and the salt are only returned once the game is over (database function).
 const verifyCache=new Map();   // game code -> { t, data } (finished games never change; running ones are cached for 5 s)
