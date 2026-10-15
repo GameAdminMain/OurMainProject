@@ -5362,11 +5362,11 @@ function enforceSpectatorDefault(){
   }catch(e){}
 }
 setInterval(enforceSpectatorDefault,500);
-// "Get ready for the next number!" panel: from the start of a round (a player with cartelas) until the first number is called
+// "Get ready for the next number!" panel: for everybody who views the round (players and spectators), from its start until the first number is called
 function syncPreCall(){
   try{
     const g=document.getElementById('screenGame'); if(!g) return;
-    const on=g.classList.contains('active') && activeGamePhase==='playing' && !g.classList.contains('spectator-mode')
+    const on=g.classList.contains('active') && (activeGamePhase==='playing'||activeGamePhase==='spectating')
              && (calledNumbersSet?calledNumbersSet.size:0)===0 && !document.querySelector('.winner-overlay.show, .winner-overlay[style*="flex"]');
     if(on===g.classList.contains('pre-call')) return;
     g.classList.toggle('pre-call',on);
