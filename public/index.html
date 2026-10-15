@@ -4896,6 +4896,11 @@ html body #screenLobby:not(#q1):not(#q2) .lobby-conn.error{color:#ffe7b8;border-
           <span id="ballNumber" class="ball-number"></span>
         </div>
         <div id="ballSub" class="ball-sub">0/75</div>
+        <div id="precallBox" class="precall-box" aria-live="polite">
+          <div class="precall-dots" aria-hidden="true"><i></i><i></i><i></i></div>
+          <div class="precall-text" data-lt="getReady">Get ready for the next number!</div>
+          <div class="precall-bar" aria-hidden="true"><div id="precallFill"></div></div>
+        </div>
       </div>
 
       <div class="automatic-pill"><span data-lt="automatic">Automatic</span><span class="automatic-switch"><i></i></span></div>
@@ -5357,6 +5362,18 @@ function enforceSpectatorDefault(){
   }catch(e){}
 }
 setInterval(enforceSpectatorDefault,500);
+// "Get ready for the next number!" panel: from the start of a round (a player with cartelas) until the first number is called
+function syncPreCall(){
+  try{
+    const g=document.getElementById('screenGame'); if(!g) return;
+    const on=g.classList.contains('active') && activeGamePhase==='playing' && !g.classList.contains('spectator-mode')
+             && (calledNumbersSet?calledNumbersSet.size:0)===0 && !document.querySelector('.winner-overlay.show, .winner-overlay[style*="flex"]');
+    if(on===g.classList.contains('pre-call')) return;
+    g.classList.toggle('pre-call',on);
+    if(on){ const f=document.getElementById('precallFill'); if(f){ f.style.animation='none'; void f.offsetWidth; f.style.animation=''; } }
+  }catch(e){}
+}
+setInterval(syncPreCall,250);
 function renderSpectatorView(msg={}){
   activeGamePhase='spectating';
   activeCountdownLeft=0;
@@ -5730,6 +5747,20 @@ function refreshGameScreenOnly(){
 }
 
 let postGameAutoRefreshTimer=null;
+let postGameStake=null;            // stake of the round that just ended: where to go back to if the connection was lost meanwhile
+let postGameWaitTimer=null;
+function stopPostGameWait(){ if(postGameWaitTimer){ clearInterval(postGameWaitTimer); postGameWaitTimer=null; } }
+function startPostGameWait(seconds){
+  stopPostGameWait();
+  let left=Math.max(0,Number(seconds)||0);
+  const paint=()=>{
+    const t=document.getElementById('cardSelectionPlayerText'), c=document.getElementById('cardSelectionCountdown');
+    if(t) t.innerText=T('nextRoundIn',left);
+    if(c) c.innerText=left;
+  };
+  paint();
+  postGameWaitTimer=setInterval(()=>{ left=Math.max(0,left-1); paint(); if(left<=0) stopPostGameWait(); },1000);
+}
 
 let restoreSelection=null;
 function captureSelection(){
@@ -5796,6 +5827,7 @@ function finishPostGameReset(msg={}){
   if(postGameAutoRefreshTimer){ clearTimeout(postGameAutoRefreshTimer); postGameAutoRefreshTimer=null; }
   if(postGameResetTimer){ clearInterval(postGameResetTimer); postGameResetTimer=null; }
   if(postGameResetRejoinTimer){ clearTimeout(postGameResetRejoinTimer); postGameResetRejoinTimer=null; }
+  stopPostGameWait(); postGameStake=null;
 
   const roomId=msg.roomId || myRoomId || localStorage.getItem('roomId');
   const stakeId=msg.stakeId || myStakeId || localStorage.getItem('stakeId');
@@ -5874,6 +5906,7 @@ function handleBackgroundRoomMessage(msg){
   }
 }
 function closeFinishedRoomLocally(roomId){
+  if(String(roomId)===String(myRoomId||'')){ stopPostGameWait(); postGameStake=null; }
   delete bgGames[String(roomId)];
   if(String(roomId)!==String(myRoomId||'')) return;
   if(postGameAutoRefreshTimer){ clearTimeout(postGameAutoRefreshTimer); postGameAutoRefreshTimer=null; }
@@ -5999,7 +6032,28 @@ function handle(msg){
   }
   break;
 
+    case 'postGameWait': {
+      // We came back (verify link, screen off, lost connection) while the board is being reset: the server kept our seat.
+      myRoomId=msg.roomId; myStakeId=msg.stakeId; postGameStake=msg.stakeId;
+      try{ localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId); }catch(e){}
+      restoringActiveGame=false; openingRoom=false; pendingStakeJoin=null;
+      if(msg.balance!==undefined && Number.isFinite(parseFloat(msg.balance)) && parseFloat(msg.balance)>=0) setBalance(msg.balance);
+      activeGamePhase='none'; activeCountdownLeft=0;
+      setSpectatorMode(false);
+      const g=document.getElementById('poolGrid'); if(g) g.innerHTML='';
+      navGo('screenCards','navCards');
+      startPostGameWait(msg.seconds);
+      schedulePostGameAutoRefresh((Number(msg.seconds)||0)+3);     // safety net: ask again if 'backToCardSelection' never arrives
+      break;
+    }
+
     case 'reconnectFailed':
+      // the seat is gone (connection was lost for a while) but the round was just over: take a seat in the same stake again
+      if(postGameStake && !(restoreSelection && !restoreSelection.joining)){
+        const sid=postGameStake; restoringActiveGame=false;
+        wsSend({type:'joinRoom',stakeId:sid,telegramId:telegramId||getTelegramId()});
+        break;
+      }
       if(restoreSelection && !restoreSelection.joining && restoreSelection.cards.length && Date.now()-restoreSelection.t<120000){
         restoreSelection.joining=true; restoringActiveGame=false;
         myRoomId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[];
@@ -6019,7 +6073,7 @@ function handle(msg){
     case 'roomClosed': closeFinishedRoomLocally(msg.roomId); break;
 
    case 'joinedRoom':
-      pendingStakeJoin=null; openingRoom=false;
+      pendingStakeJoin=null; openingRoom=false; stopPostGameWait(); postGameStake=null;
       if(msg.status!=='playing') currentGameCode=null;
       if(restoreSelection){
         if(restoreSelection.joining && (msg.status==='waiting'||msg.status==='countdown') && !(msg.cardId||msg.cardId2||msg.cardId3||msg.cardId4)){
@@ -6229,6 +6283,7 @@ function handle(msg){
     case 'disqualified': showDisqualified(); break;
 
     case 'gameOver':
+      if(msg.stakeId) postGameStake=msg.stakeId;
       if(msg.roomId){
         myRoomId=msg.roomId;
         localStorage.setItem('roomId',msg.roomId);
@@ -6277,6 +6332,7 @@ function handle(msg){
       break;
 
     case 'leftRoom': if(msg.roomId && myRoomId && String(msg.roomId)!==String(myRoomId)) break;
+      stopPostGameWait(); postGameStake=null;
       restoreSelection=null;
       clearSelectionCardsPreview(); clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[]; if(!document.getElementById('screenRooms')?.classList.contains('active')) navGo('screenLobby'); break;
 
@@ -7663,6 +7719,50 @@ connect();
     <div class="nr-other" id="nrOther"></div>
   </div>
 </div>
+<style id="beteseb-reference-look">
+/* ===== top stat boxes: Game ID / Players / Bet / Derash / Called ===== */
+html body #screenGame:not(#q1):not(#q2):not(#q3):not(#q4) .player-stat>div{
+  font-size:clamp(11px,3.3vw,13.5px)!important;font-weight:700!important;color:#ece7ff!important;line-height:1.1!important;letter-spacing:.1px!important;
+}
+html body #screenGame:not(#q1):not(#q2):not(#q3):not(#q4) .player-stat strong{
+  font-size:clamp(16px,5vw,20px)!important;font-weight:800!important;color:#fff!important;margin-top:4px!important;line-height:1.1!important;
+}
+html body #screenGame:not(#q1):not(#q2):not(#q3):not(#q4) .player-stat.game-id-stat strong{
+  font-size:clamp(11px,3.4vw,14px)!important;font-weight:800!important;letter-spacing:.5px!important;margin-top:5px!important;
+}
+
+/* ===== before the first number is called: "Get ready for the next number!" ===== */
+.precall-box{display:none}
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-call-card{
+  height:clamp(104px,16dvh,130px)!important;flex-direction:column!important;justify-content:center!important;gap:0!important;
+  background:linear-gradient(160deg,rgba(40,44,76,.82) 0%,rgba(36,40,92,.82) 55%,rgba(58,52,128,.78) 100%)!important;
+  border:1px solid rgba(255,255,255,.2)!important;
+}
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-call-card:before,
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-call-card .ball-circle,
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-call-card .ball-sub{display:none!important}
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .precall-box{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:clamp(7px,1.6dvh,12px);width:100%;height:100%;
+  padding:clamp(8px,1.8dvh,14px) clamp(10px,3vw,16px);box-sizing:border-box;position:relative;z-index:1;
+}
+.precall-dots{display:flex;gap:9px;align-items:center;justify-content:center}
+.precall-dots i{width:11px;height:11px;border-radius:50%;background:#c06cf2;display:block;animation:precallDot 1.2s ease-in-out infinite}
+.precall-dots i:nth-child(2){animation-delay:.2s}
+.precall-dots i:nth-child(3){animation-delay:.4s}
+@keyframes precallDot{0%,80%,100%{opacity:.35;transform:scale(.82)}40%{opacity:1;transform:scale(1.08)}}
+.precall-text{font-size:clamp(14px,4.4vw,17px);font-weight:800;color:#d1b3ff;text-align:center;line-height:1.35;letter-spacing:.1px}
+.precall-bar{width:100%;height:7px;border-radius:99px;background:rgba(255,255,255,.17);overflow:hidden}
+.precall-bar>div{height:100%;width:0;border-radius:99px;background:linear-gradient(90deg,#c06cf2,#a64fe8)}
+#screenGame.pre-call .precall-bar>div{animation:precallFill 5s linear forwards}
+@keyframes precallFill{from{width:4%}to{width:100%}}
+/* the speaker button sits in the top-right corner of that panel, the chip row is empty anyway */
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-game-right{position:relative}
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-game-right > .player-called-strip{
+  position:absolute!important;top:6px;right:8px;z-index:4;width:auto!important;height:auto!important;
+}
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-game-right > .player-called-strip .called-chips{display:none!important}
+html body #screenGame.pre-call:not(#q1):not(#q2):not(#q3):not(#q4) .player-game-right > .player-call-card{margin-top:0!important}
+</style>
 </body>
 </html>
 

@@ -1086,6 +1086,7 @@ async function endGame(room, winners, customMsg, noWinner){
   const stakeCfg=STAKES.find(x=>x.id===room.stakeId);
   const nrs=Number(stakeCfg&&stakeCfg.nextRoundSeconds);
   const RESET_SECONDS=Number.isFinite(nrs)&&nrs>=1?Math.min(300,Math.floor(nrs)):DEFAULT_NEXT_ROUND_SECONDS;
+  room.resetAt=Date.now()+RESET_SECONDS*1000;      // a player who reconnects during the pause is told how long is left
   broadcast(room,{
     type:'gameOver',
     roomId:room.roomId,
@@ -1339,7 +1340,7 @@ wss.on('connection',(ws,req)=>{
       // After a round finishes the same room is deliberately kept in WAITING state.
       // Allow a page reload/reconnect to return to that room instead of forcing the
       // player back to the lobby.
-      if(room.status!=='playing' && room.status!=='waiting' && room.status!=='countdown'){
+      if(room.status!=='playing' && room.status!=='waiting' && room.status!=='countdown' && room.status!=='finished'){
         send(ws,{type:'reconnectFailed'}); break;
       }
 
@@ -1374,6 +1375,11 @@ wss.on('connection',(ws,req)=>{
             cardId4:ep.cardId4||null,cardNumbers4:ep.cardId4?getCard(ep.cardId4).numbers:[],
 
             calledNumbers:room.calledNumbers,pot:room.pot,playerCount:livePlayerCount(room),balance:client.balance});
+        }else if(room.status==='finished'){
+          // The round is over and the board is being reset: keep this connection in the room so it receives
+          // 'backToCardSelection', and tell the app how long the pause still lasts.
+          send(ws,{type:'postGameWait',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,
+            seconds:Math.max(0,Math.ceil(((room.resetAt||Date.now())-Date.now())/1000))});
         }else{
           // WAITING/COUNTDOWN room: show fresh card selection state.
           send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,
@@ -1501,6 +1507,17 @@ wss.on('connection',(ws,req)=>{
 
               const room=getOrCreateRoom(msg.stakeId);
 
+              if(room.status==='finished'){
+                // between rounds: take the seat now, the board opens when the pause ends
+                let ep=room.players.find(x=>x.playerId===client.playerId||(client.telegramId&&String(x.telegramId||'')===String(client.telegramId)));
+                if(ep){ attachSocket(ep,ws); ep.playerId=client.playerId; ep.detached=false; }
+                else room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws:makeMux([ws]),cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
+                client.roomId=room.roomId; client.rooms.add(room.roomId);
+                send(ws,{type:'postGameWait',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,
+                  seconds:Math.max(0,Math.ceil(((room.resetAt||Date.now())-Date.now())/1000))});
+                broadcastLobby();
+                break;
+              }
               if(room.status!=='waiting'&&room.status!=='countdown') return send(ws,{type:'error',message:'ጨዋታው ቀድሞውኑ ተጀምሯል።'});
 
               room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws:makeMux([ws]),cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
@@ -1686,6 +1703,7 @@ wss.on('connection',(ws,req)=>{
       if(p) detachSocket(p,ws);
       if(p&&openSockets(p).length) return;                              // another device of this account is still connected
       if((room.status==='playing'||room.status==='starting')&&p){ keepClient=true; }   // running games (and one being created right now) stay alive
+      else if(room.status==='finished'&&p){ keepClient=true; p.absentSince=Date.now(); }   // post-game pause: the app may come back (verify link, screen off) before the next round
       else if(p&&(room.status==='waiting'||room.status==='countdown')){
         keepClient=true;
         if(p.graceTimer) clearTimeout(p.graceTimer);
