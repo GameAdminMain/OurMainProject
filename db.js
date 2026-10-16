@@ -294,7 +294,8 @@ async getActiveStakes() {
             br.card_count,
             br.max_cards_per_player,
             br.selection_seconds,
-            br.next_round_seconds
+            br.next_round_seconds,
+            cr.commission_rate
 
         FROM bingo_stakes bs
 
@@ -305,6 +306,9 @@ async getActiveStakes() {
         INNER JOIN bingo_rooms br
             ON br.id = brs.room_id
             AND br.status = 'active'
+
+        LEFT JOIN bingo_commission_rules cr
+            ON cr.id = br.commission_rule_id
 
         WHERE bs.is_active = true
 
@@ -340,7 +344,9 @@ async getActiveStakes() {
         cardCount: Number(row.card_count),
         maxCardsPerPlayer: Number(row.max_cards_per_player),
         selectionSeconds: Number(row.selection_seconds),
-        nextRoundSeconds: Number(row.next_round_seconds)
+        nextRoundSeconds: Number(row.next_round_seconds),
+        // commission of the room's rule (percent); null when the rule is missing
+        commissionRate: row.commission_rate === null || row.commission_rate === undefined ? null : Number(row.commission_rate)
     }));
 },
 

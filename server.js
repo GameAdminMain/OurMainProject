@@ -129,7 +129,7 @@ function paidPlayerList(room){ return paidPlayersOf(room).map(p=>({playerId:p.pl
 const LOBBY_WAIT_MS    = 30000;
 const CALL_INTERVAL_MS = 5000;
 // delay before the FIRST number of a round (later numbers use CALL_INTERVAL_MS); env FIRST_CALL_DELAY_MS, 0-60000 ms
-const FIRST_CALL_DELAY_MS = 2000;//(()=>{ const v=Number(process.env.FIRST_CALL_DELAY_MS); return Number.isFinite(v)&&v>=0&&v<=60000?Math.round(v):2000; })();
+const FIRST_CALL_DELAY_MS = (()=>{ const v=Number(process.env.FIRST_CALL_DELAY_MS); return Number.isFinite(v)&&v>=0&&v<=60000?Math.round(v):2000; })();
 const CLAIM_WINDOW_MS  = 4800;
 const CLAIM_COLLECT_MS = 700; // grace period to gather simultaneous BINGO claims
 const TOTAL_CARDS      = 600;   // largest card_count a room may use (your rooms use 600)
@@ -163,7 +163,8 @@ async function loadStakesFromDb(){
         minPlayers:Math.max(2,s.minPlayers||2),
         maxCards:Math.max(1,Math.min(4,s.maxCardsPerPlayer||4)),
         selectionSeconds:s.selectionSeconds||Math.ceil(LOBBY_WAIT_MS/1000),
-        nextRoundSeconds:s.nextRoundSeconds     // bingo_rooms.next_round_seconds: pause between the end of a game and the next round
+        nextRoundSeconds:s.nextRoundSeconds,    // bingo_rooms.next_round_seconds: pause between the end of a game and the next round
+        commissionRate:Number.isFinite(s.commissionRate)?s.commissionRate:null    // bingo_commission_rules.commission_rate of the room (percent)
       });
     }
     if(!next.length){ console.warn('⚠️ getActiveStakes returned no active stakes (bingo_stakes + bingo_room_stakes + bingo_rooms must be active)'); retryStakesSoon(); return false; }
@@ -451,7 +452,7 @@ function getOrCreateRoom(sid){
   if(r) return r;
   const s=STAKES.find(s=>s.id===sid), roomId=uuidv4();
   r={roomId,stakeId:sid,stake:s.amount,maxPlayers:s.maxPlayers,cardLimit:s.cardLimit,
-     group:s.group||sid,dbStakeId:s.dbStakeId||null,dbRoomId:s.dbRoomId||null,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,selectionSeconds:s.selectionSeconds||0,
+     group:s.group||sid,dbStakeId:s.dbStakeId||null,dbRoomId:s.dbRoomId||null,minPlayers:s.minPlayers||2,maxCards:s.maxCards||4,selectionSeconds:s.selectionSeconds||0,commissionRate:Number.isFinite(s.commissionRate)?s.commissionRate:null,
      status:'waiting',players:[],calledNumbers:[],
      availableNumbers:Array.from({length:75},(_,i)=>i+1),callTimer:null,countdownTimer:null,claimEvalTimer:null,
      countdownLeft:Math.ceil((s.selectionSeconds?s.selectionSeconds*1000:LOBBY_WAIT_MS)/1000),claimWindowOpen:false,claimedThisRound:[],resetCountdownTimer:null,resetTimer:null,
@@ -497,6 +498,7 @@ const send=(ws,msg)=>{
   // every message about a running game carries the game code returned by createBingoGame (shown as "Game ID")
   if(msg&&msg.roomId&&msg.gameId===undefined){ const r=rooms[msg.roomId]; if(r&&r.dbGameCode) msg={...msg,gameId:r.dbGameCode}; }
   if(msg&&msg.roomId&&COMMIT_TYPES.has(msg.type)&&msg.commitment===undefined){ const r=rooms[msg.roomId]; if(r&&r.fair) msg={...msg,commitment:r.fair.commitment}; }
+  if(msg&&msg.roomId&&COMMIT_TYPES.has(msg.type)&&msg.commissionRate===undefined){ const r=rooms[msg.roomId]; if(r&&r.commissionRate!=null) msg={...msg,commissionRate:r.commissionRate}; }
   ws.send(JSON.stringify(msg));
 };
 // A player can be in SEVERAL rooms at once (one per stake: 5 / 10 / 20 = up to 3 games at a time).
@@ -567,7 +569,7 @@ function relinkAllRooms(client,ws,tid){
     });
   });
 }
-const broadcast=(room,msg)=>{const s=JSON.stringify({roomId:room.roomId,stakeId:room.stakeId,gameId:room.dbGameCode||undefined,...(COMMIT_TYPES.has(msg.type)&&room.fair?{commitment:room.fair.commitment}:{}),...msg});room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
+const broadcast=(room,msg)=>{const s=JSON.stringify({roomId:room.roomId,stakeId:room.stakeId,gameId:room.dbGameCode||undefined,...(COMMIT_TYPES.has(msg.type)&&room.fair?{commitment:room.fair.commitment}:{}),...(COMMIT_TYPES.has(msg.type)&&room.commissionRate!=null?{commissionRate:room.commissionRate}:{}),...msg});room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
 // Lobby payload: one entry per stake (amount); a stake with several rooms lists them in `rooms`.
 function liveRoomOf(sid){
   const all=Object.values(rooms).filter(r=>r.stakeId===sid);

@@ -4837,6 +4837,7 @@ html body #screenLobby:not(#q1):not(#q2) .lobby-conn.error{color:#ffe7b8;border-
   </div>
 
   </div>
+  <div id="selRate" style="display:none;text-align:center;font:700 12px Inter,sans-serif;color:#ffe27a;margin:4px 0" aria-live="polite"></div>
   <div id="selFair" style="display:none;text-align:center;font:600 11.5px Inter,sans-serif;color:#b8baf5;margin:4px 0" aria-live="polite"></div>
   <div class="card-selection-action-bar" aria-label="Number selection actions">
     <button type="button" class="card-selection-action leave" onclick="leaveRoom()" data-lt="leave">Leave</button>
@@ -5973,6 +5974,13 @@ function followGame(){
   if(on('screenCards')||on('screenGame')) navGo('screenGame','navGame');
 }
 const fairByRoom={};
+// commission and the share of the pot the winner(s) receive, shown above the fingerprint in the card-selection window
+function showRateInfo(rate){
+  const e=document.getElementById('selRate'); if(!e) return;
+  const c=Number(rate); if(!Number.isFinite(c)||c<0||c>100){ e.style.display='none'; return; }
+  const f=x=>String(Math.round(x*100)/100);
+  e.textContent=T('rateLine',f(c),f(100-c)); e.style.display='block';
+}
 function showFairChip(c){
   const e=document.getElementById('selFair'); if(!e||!c) return;
   e.textContent=T('fairChip')+': '+c.slice(0,8)+'…'+c.slice(-6); e.title=c; e.style.display='block';
@@ -5997,6 +6005,7 @@ async function renderFairness(msg){
 }
 function handle(msg){
   if(msg.commitment&&msg.roomId){ fairByRoom[msg.roomId]=msg.commitment; if(String(msg.roomId)===String(myRoomId||'')) showFairChip(msg.commitment); }
+  if(msg.commissionRate!==undefined&&msg.roomId&&String(msg.roomId)===String(myRoomId||'')) showRateInfo(msg.commissionRate);
   if(msg.roomId && ROOM_SCOPED_MESSAGES.has(msg.type) && String(msg.roomId)!==String(myRoomId||'')){
     handleBackgroundRoomMessage(msg);
     return;
