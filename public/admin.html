@@ -182,7 +182,7 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" -v ON_ERROR_STOP=1 -f bbpback
   function gate(msg){ $('app').hidden=true; $('gate').hidden=false; $('gateMsg').textContent=msg||''; clearInterval(timer); }
   // the token box exists only if the server allows token login (off by default: main and statistics admins only)
   var tokenLogin=false;
-  var modeP=fetch(base+'/api/admin/mode',{cache:'no-store'}).then(function(r){return r.json();}).then(function(m){ tokenLogin=!!(m&&m.tokenLogin); if(tokenLogin&&!tg){ $('tok').hidden=false; $('tokGo').hidden=false; } }).catch(function(){});
+  var modeP=fetch(base+'/api/admin/mode',{cache:'no-store'}).then(function(r){return r.json();}).then(function(m){ tokenLogin=!!(m&&m.tokenLogin); if(tokenLogin&&!tg){ $('tok').hidden=false; $('tokGo').hidden=false; $('gateHint').textContent='Enter the admin token to open the dashboard.'; $('tok').focus(); } }).catch(function(){});
   $('tokGo').onclick=async function(){ token=$('tok').value.trim(); try{ sessionStorage.setItem('adm_tok',token); }catch(e){} start(); };
   $('tok').addEventListener('keydown',function(e){ if(e.key==='Enter') $('tokGo').click(); });
 

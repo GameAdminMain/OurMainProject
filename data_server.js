@@ -65,7 +65,7 @@ app.get('/health',(req,res)=>{
 function db_saveClientError(b){ bingoDb.saveClientError({...b,line:Number(b.line)||0}).catch(e=>{ if(!/client_errors|relation/.test(e.message)) console.error('saveClientError:',e.message); }); }
 const clientErrHits=new Map();   // ip -> { t, n }
 app.post('/api/client-error',(req,res)=>{
-  const ip=String(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').split(',')[0].trim();
+  const ip=String(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').split(',').pop().trim();   // last entry = added by the proxy, a client cannot fake it
   const now=Date.now(); let h=clientErrHits.get(ip);
   if(!h||now-h.t>60000){ h={t:now,n:0}; clientErrHits.set(ip,h); }
   if(++h.n>10) return res.sendStatus(429);
@@ -230,12 +230,16 @@ app.get('/api/verify/:code',async(req,res)=>{
 // ─── ADMIN DASHBOARD (admin.html) ─────────────────────────────
 // Access: ONLY a Telegram Web App opened by an active, unblocked MAIN or STATISTICS admin of the bot (signed initData;
 // the role is read from the users table on every check, so removing an admin locks him out within 20 seconds).
-// The shared secret ADMIN_TOKEN works ONLY if ADMIN_TOKEN_LOGIN=on is set explicitly (off by default).
+// Browser access: the shared secret ADMIN_TOKEN (min. 16 characters) opens the dashboard with MAIN rights from any browser.
+// It is on whenever ADMIN_TOKEN is set; set ADMIN_TOKEN_LOGIN=off to switch it off again.
 // Everything is read-only except: statement import, "run reconciliation", settings (MAIN only).
 const DASH_TZ=/^[A-Za-z_\/+\-0-9]{2,40}$/.test(process.env.DASH_TZ||'')?process.env.DASH_TZ:'Africa/Addis_Ababa';
 const adminCache=new Map(), adminFails=new Map(), adminDeniedLog=new Map();
-const ADMIN_TOKEN_LOGIN=String(process.env.ADMIN_TOKEN_LOGIN||'').toLowerCase()==='on'&&!!process.env.ADMIN_TOKEN;
-if(process.env.ADMIN_TOKEN&&!ADMIN_TOKEN_LOGIN) console.log('[admin] ADMIN_TOKEN is set but token login is OFF (set ADMIN_TOKEN_LOGIN=on to allow it): the dashboard is open to main and statistics admins only');
+const ADMIN_TOKEN_OK=String(process.env.ADMIN_TOKEN||'').length>=16;
+const ADMIN_TOKEN_LOGIN=String(process.env.ADMIN_TOKEN_LOGIN||'').toLowerCase()!=='off'&&ADMIN_TOKEN_OK;
+if(process.env.ADMIN_TOKEN&&!ADMIN_TOKEN_OK) console.error('[admin] ADMIN_TOKEN is shorter than 16 characters: token login is DISABLED. Use a long random value.');
+else if(ADMIN_TOKEN_LOGIN) console.log('[admin] browser login with ADMIN_TOKEN is ON (main admin rights). Set ADMIN_TOKEN_LOGIN=off to disable it.');
+else if(process.env.ADMIN_TOKEN) console.log('[admin] ADMIN_TOKEN login is switched OFF (ADMIN_TOKEN_LOGIN=off): only main and statistics admins from Telegram can open the dashboard');
 function safeEq(a,b){ const x=Buffer.from(String(a)), y=Buffer.from(String(b)); return x.length===y.length&&crypto.timingSafeEqual(x,y); }
 async function adminAuth(req){
   const auth=String(req.headers.authorization||'');
@@ -258,7 +262,7 @@ async function adminAuth(req){
 }
 function adminRoute(needMain,fn){
   return async(req,res)=>{
-    const ip=String(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').split(',')[0].trim();
+    const ip=String(req.headers['x-forwarded-for']||req.socket.remoteAddress||'').split(',').pop().trim();   // last entry = added by the proxy, a client cannot fake it
     try{
       const f=adminFails.get(ip); if(f&&f.n>=20&&Date.now()-f.t<60000) return res.sendStatus(429);
       const who=await adminAuth(req);
