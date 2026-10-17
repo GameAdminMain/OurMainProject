@@ -692,6 +692,7 @@ async getActiveStakes() {
       `SELECT COUNT(*) AS n FROM deposits d WHERE d.user_id = $1`,
       `
       SELECT d.id, d.amount, d.reference, d.status,
+             d.depositor_account, d.depositor_name,
              pa.account_number AS deposit_account,
              to_char(d.created_at AT TIME ZONE 'Africa/Addis_Ababa', 'DD Mon HH24:MI') AS when_text,
              pm.name AS method_name

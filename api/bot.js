@@ -2723,6 +2723,7 @@ async function adminUserHistoryView(userId, kind, page) {
       if (isDep) {
         text += `    🔖 Ref: \`${r.reference || "—"}\`\n`;
         text += `    🏦 Deposit account: \`${r.deposit_account || "—"}\`\n`;
+        if (r.depositor_account) text += `    📲 Sent from: \`${r.depositor_account}\`${r.depositor_name ? ` (${mdEsc(r.depositor_name)})` : ""}\n`;
       } else {
         text += `    🏦 Account: \`${r.account_number || "—"}\`\n`;
       }
@@ -10510,114 +10511,13 @@ bot.on(
           telegramId
         );
 
-        const keyboard = [];
+        // full user card: wallets, deposit/withdrawal counts, bonus total, history buttons
+        const card = await adminUserCard(user);
 
-        if (
-          user.is_blocked
-        ) {
-
-          keyboard.push([
-            {
-              text:
-                "✅ Unblock User",
-
-              callback_data:
-                `admin_unblock_user_${user.id}`
-            }
-          ]);
-
-        } else {
-
-          keyboard.push([
-            {
-              text:
-                "🚫 Block User",
-
-              callback_data:
-                `admin_block_user_${user.id}`
-            }
-          ]);
-
-        }
-
-        if (user.is_admin !== true) {
-          keyboard.push([
-            {
-              text:
-                "💳 Money Restrictions",
-              callback_data:
-                `fr_u_${user.id}`
-            }
-          ]);
-        }
-
-        keyboard.push([
-          {
-            text:
-              "👤 Manage Another User",
-
-            callback_data:
-              "admin_manage_user"
-          }
-        ]);
-
-        keyboard.push([
-          {
-            text:
-              "🏠 Home",
-
-            callback_data:
-              "admin_home"
-          }
-        ]);
-
-        keyboard.push([
-          {
-            text:
-              "❌ Close",
-
-            callback_data:
-              "admin_manage_user_cancel"
-          }
-        ]);
-
-        return respond("reply", ctx, 
-
-          `👤 *USER FOUND*\n\n` +
-
-          `👤 Name: *${
-            user.name ||
-            "Unknown"
-          }*\n` +
-
-          `📱 Phone: \`${
-            user.phone ||
-            "Not available"
-          }\`\n` +
-
-          `🔐 Blocked: ${
-            user.is_blocked
-              ? "🚫 Yes"
-              : "✅ No"
-          }\n` +
-
-          `📌 Status: ${
-            user.is_active
-              ? "🟢 Active"
-              : "⚪ Inactive"
-          }`,
-
-          {
-            parse_mode:
-              "Markdown",
-
-            reply_markup: {
-              inline_keyboard:
-                keyboard
-            }
-          }
-
-        );
+        return respond("reply", ctx, card.text, {
+          parse_mode: "Markdown",
+          reply_markup: { inline_keyboard: card.keyboard }
+        });
 
       }
 
