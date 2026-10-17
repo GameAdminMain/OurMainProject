@@ -93,6 +93,52 @@ app.get('/health',(req,res)=>{
     stakesLoaded:STAKES.length,stakeList:STAKES.map(x=>({id:x.id,amount:x.amount,room:x.roomName||x.dbRoomId,showRoomPage:x.showRoomPage})),rooms:Object.keys(rooms).length,players:Object.keys(clients).length,
     botTokenSet:!!BOT_TOKEN,unverifiedAuth:ALLOW_UNVERIFIED_AUTH});
 });
+// ─── LIVE PLAYERS (admin dashboard "Live players") ───────────────
+// Only the data server may call this: it sends the shared secret LIVE_KEY (min 16 characters, set the SAME value on both
+// services) and shows the answer to signed-in admins. Without LIVE_KEY the endpoint stays closed. Nothing is stored.
+const LIVE_KEY=String(process.env.LIVE_KEY||'');
+app.get('/internal/live',(req,res)=>{
+  res.setHeader('Cache-Control','no-store');
+  if(LIVE_KEY.length<16) return res.status(503).json({error:'LIVE_KEY is not set on the game server (min 16 characters)'});
+  const k=Buffer.from(String(req.headers['x-live-key']||'')), want=Buffer.from(LIVE_KEY);
+  if(k.length!==want.length||!crypto.timingSafeEqual(k,want)) return res.status(401).json({error:'unauthorized'});
+  try{ res.json(liveSnapshot()); }catch(e){ console.error('liveSnapshot:',e.message); res.status(500).json({error:'snapshot failed'}); }
+});
+function liveSnapshot(){
+  const roomName=r=>{ const s=STAKES.find(x=>x.id===r.stakeId); return (s&&s.roomName)||''; };
+  const playing=[], inPlay=new Set();
+  for(const r of Object.values(rooms)){
+    if(r.status!=='playing'&&r.status!=='starting') continue;
+    for(const p of r.players){
+      if(!p.hasPaid) continue;
+      const tid=p.telegramId?String(p.telegramId):'';
+      if(tid) inPlay.add(tid);
+      playing.push({telegramId:tid,name:p.playerName||'',stake:r.stake,room:roomName(r),cartelas:getPlayerCardCount(p),
+        called:r.calledNumbers.length,connected:openSockets(p).length>0,disqualified:!!p.disqualified});
+    }
+  }
+  // everybody with an open, signed-in socket; one row per account (several devices count once)
+  const seen=new Map(); let unsigned=0;
+  for(const c of Object.values(clients)){
+    if(!(c.ws&&c.ws.readyState===WebSocket.OPEN)) continue;
+    if(!c.telegramId){ unsigned++; continue; }
+    const tid=String(c.telegramId);
+    if(seen.has(tid)) continue;
+    let where='Lobby', stake=null, room='';
+    const r=c.roomId?rooms[c.roomId]:null;
+    if(r){
+      stake=r.stake; room=roomName(r);
+      where=(r.status==='waiting'||r.status==='countdown')?'Choosing cartelas':(r.status==='playing'||r.status==='starting')?'Watching a game':'Viewing the result';
+    }
+    seen.set(tid,{telegramId:tid,name:c.playerName||'',where,stake,room});
+  }
+  const onlinePlaying=playing.filter(p=>p.connected&&p.telegramId).length;
+  const onlineOnly=[...seen.values()].filter(u=>!inPlay.has(u.telegramId));
+  return {at:new Date().toISOString(),
+    counts:{online:seen.size+unsigned,signedIn:seen.size,unsigned,playing:playing.length,playingOnline:onlinePlaying,onlineOnly:onlineOnly.length},
+    playing:playing.sort((a,b)=>(b.stake-a.stake)||String(a.room).localeCompare(String(b.room))||String(a.name).localeCompare(String(b.name))),
+    onlineOnly:onlineOnly.sort((a,b)=>String(a.where).localeCompare(String(b.where))||String(a.name).localeCompare(String(b.name)))};
+}
 // /verify and /admin live on the web client (Vercel). If someone opens them on this server, send them there
 // (set CLIENT_URL=https://your-client.vercel.app on Railway; default below).
 const CLIENT_URL=String(process.env.CLIENT_URL||'https://game-client-go-three.vercel.app').replace(/\/+$/,'');

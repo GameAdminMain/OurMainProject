@@ -650,6 +650,90 @@ async getActiveStakes() {
     return rows[0] || null;
   },
 
+  // ============================================================
+  // ADMIN > MANAGE USER: money summary and paged money history of ONE user (by users.id)
+  // ============================================================
+
+  // counts, totals, bonus received and the current wallets, in ONE query
+  async getAdminUserMoneySummary(userId) {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        (SELECT COUNT(*) FROM deposits d WHERE d.user_id = u.id AND d.status = 'completed') AS deposit_count,
+        (SELECT COALESCE(SUM(d.amount), 0) FROM deposits d WHERE d.user_id = u.id AND d.status = 'completed') AS deposit_total,
+        (SELECT COUNT(*) FROM withdrawals w WHERE w.user_id = u.id AND w.status = 'approved') AS withdraw_count,
+        (SELECT COALESCE(SUM(w.amount), 0) FROM withdrawals w WHERE w.user_id = u.id AND w.status = 'approved') AS withdraw_total,
+        (SELECT COUNT(*) FROM withdrawals w WHERE w.user_id = u.id AND w.status IN ('pending', 'processing')) AS withdraw_pending,
+        (SELECT COALESCE(SUM(b.awarded_amount), 0) FROM user_bonuses b
+           WHERE b.user_id = u.id AND b.status IN ('active', 'completed', 'expired', 'forfeited')) AS bonus_total,
+        COALESCE(wb.main_balance, 0) AS main_balance,
+        COALESCE(wb.play_balance, 0) AS play_balance,
+        COALESCE(wb.bonus_balance, 0) AS bonus_balance
+      FROM users u
+      LEFT JOIN user_wallet_balances wb ON wb.user_id = u.id
+      WHERE u.id = $1
+      LIMIT 1
+      `,
+      [userId]
+    );
+    if (!rows.length) return null;
+    const r = rows[0], n = v => Number(v || 0);
+    return {
+      depositCount: n(r.deposit_count), depositTotal: n(r.deposit_total),
+      withdrawCount: n(r.withdraw_count), withdrawTotal: n(r.withdraw_total), withdrawPending: n(r.withdraw_pending),
+      bonusTotal: n(r.bonus_total),
+      mainBalance: n(r.main_balance), playBalance: n(r.play_balance), bonusBalance: n(r.bonus_balance)
+    };
+  },
+
+  // deposits: payment method, reference number, the account the money was sent TO, amount, status, date
+  async getAdminUserDeposits(userId, page = 1, pageSize = 5) {
+    return historyPage(
+      `SELECT COUNT(*) AS n FROM deposits d WHERE d.user_id = $1`,
+      `
+      SELECT d.id, d.amount, d.reference, d.status,
+             pa.account_number AS deposit_account,
+             to_char(d.created_at AT TIME ZONE 'Africa/Addis_Ababa', 'DD Mon HH24:MI') AS when_text,
+             pm.name AS method_name
+      FROM deposits d
+      LEFT JOIN payment_accounts pa ON pa.id = d.payment_account_id
+      LEFT JOIN payment_methods pm ON pm.id = COALESCE(pa.payment_method_id, d.deposit_method_id)
+      WHERE d.user_id = $1
+      ORDER BY d.created_at DESC, d.id DESC
+      LIMIT $2 OFFSET $3
+      `,
+      [userId], page, pageSize
+    );
+  },
+
+  // withdrawals: payment method, the account the money was sent TO, amount, status, date
+  async getAdminUserWithdrawals(userId, page = 1, pageSize = 5) {
+    return historyPage(
+      `SELECT COUNT(*) AS n FROM withdrawals w WHERE w.user_id = $1`,
+      `
+      SELECT w.id, w.amount, w.account_number, w.status,
+             to_char(w.created_at AT TIME ZONE 'Africa/Addis_Ababa', 'DD Mon HH24:MI') AS when_text,
+             pm.name AS method_name
+      FROM withdrawals w
+      LEFT JOIN payment_methods pm ON pm.id = w.payment_method_id
+      WHERE w.user_id = $1
+      ORDER BY w.created_at DESC, w.id DESC
+      LIMIT $2 OFFSET $3
+      `,
+      [userId], page, pageSize
+    );
+  },
+
+  // one user by users.id, same columns as getUserByPhoneForAdmin (used when an admin screen is re-opened)
+  async getUserByIdForAdmin(userId) {
+    const { rows } = await pool.query(
+      `SELECT id, telegram_id, name, phone, is_active, is_blocked, is_admin, admin_role
+       FROM users WHERE id = $1 AND is_active = TRUE LIMIT 1`,
+      [userId]
+    );
+    return rows[0] || null;
+  },
+
 async registerUser(telegramId, name, phone) {
   const normalizedPhone = normalizeEthiopianPhone(phone);
 

@@ -3,6 +3,7 @@
  *   GET /api/user/:tid        player profile: wallets, totals, per-stake stats
  *   GET /api/top-winners      winners board
  *   GET /api/verify/:gameCode public fairness data of one game (order + salt after the game is over), used by /verify
+ *   GET  /api/admin/live  who is online / playing now (asks the game server; env GAME_SERVER_URL + LIVE_KEY)
  *   GET  /api/admin/{overview,queues,errors,recon,settings}, POST /api/admin/{recon/run,settings,statement}  admin dashboard (admin.html)
  *   POST /api/client-error    crashes of the game page (logged only, rate-limited)
  *   GET /health
@@ -324,6 +325,21 @@ app.get('/api/admin/queues',adminRoute(false,async(req,res)=>{
         WHERE w.needs_review AND w.created_at>now()-interval '7 days' AND w.status NOT IN ('pending','processing') ORDER BY w.created_at DESC LIMIT 30`,[]),
   ]);
   res.json({live,withdrawals:wd,deposits:dep,flaggedRecent:flagged});
+}));
+
+// who is online / playing right now: lives in the memory of the game server, so it is asked for it (shared secret LIVE_KEY)
+const GAME_SERVER_URL=String(process.env.GAME_SERVER_URL||'').replace(/\/+$/,'');
+const LIVE_KEY=String(process.env.LIVE_KEY||'');
+app.get('/api/admin/live',adminRoute(false,async(req,res)=>{
+  if(!GAME_SERVER_URL||LIVE_KEY.length<16) return res.status(503).json({error:'Set GAME_SERVER_URL and LIVE_KEY (min 16 characters, same value as on the game server) on the data server.'});
+  const ctl=new AbortController(), t=setTimeout(()=>ctl.abort(),4000);
+  try{
+    const r=await fetch(GAME_SERVER_URL+'/internal/live',{headers:{'X-Live-Key':LIVE_KEY},signal:ctl.signal,cache:'no-store'});
+    const j=await r.json().catch(()=>null);
+    if(!r.ok) return res.status(502).json({error:'Game server answered '+r.status+(j&&j.error?': '+j.error:'')});
+    res.json(j);
+  }catch(e){ res.status(502).json({error:'Cannot reach the game server ('+(e.name==='AbortError'?'timeout':e.message)+')'}); }
+  finally{ clearTimeout(t); }
 }));
 
 app.get('/api/admin/errors',adminRoute(false,async(req,res)=>{

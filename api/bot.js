@@ -2647,6 +2647,136 @@ bot.callbackQuery(/^fr_sr_(t|a)$/, async (ctx) => {
   }
 });
 
+// ------------------------------------------------------------
+// Manage User: the user card (with money summary) and the deposit / withdrawal history pages
+// ------------------------------------------------------------
+const ADM_HIST_PAGE = 5;
+const admEtb = (n) => Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const ADM_STATUS_ICON = {
+  completed: "✅", approved: "✅", pending: "⏳", processing: "⏳",
+  rejected: "❌", failed: "❌", cancelled: "🚫", reversed: "↩️"
+};
+const admStatus = (s) => `${ADM_STATUS_ICON[s] || "•"} ${s || "—"}`;
+
+async function adminUserCard(user) {
+  let m = null;
+  try { m = await db.getAdminUserMoneySummary(user.id); }
+  catch (e) { console.error("getAdminUserMoneySummary:", e.message); }
+
+  let text =
+    `👤 *USER FOUND*\n\n` +
+    `👤 Name: *${mdEsc(user.name || "Unknown")}*\n` +
+    `📱 Phone: \`${user.phone || "Not available"}\`\n` +
+    `🔐 Blocked: ${user.is_blocked ? "🚫 Yes" : "✅ No"}\n` +
+    `📌 Status: ${user.is_active ? "🟢 Active" : "⚪ Inactive"}`;
+
+  if (m) {
+    text +=
+      `\n\n💰 *Wallets*\n` +
+      `🏦 Main wallet: *${admEtb(m.mainBalance)}* ETB\n` +
+      `🎮 Play wallet: *${admEtb(m.playBalance)}* ETB\n` +
+      `🎁 Bonus wallet: *${admEtb(m.bonusBalance)}* ETB\n\n` +
+      `📊 *History*\n` +
+      `📥 Deposits: *${m.depositCount}* time(s) · ${admEtb(m.depositTotal)} ETB\n` +
+      `📤 Withdrawals: *${m.withdrawCount}* time(s) · ${admEtb(m.withdrawTotal)} ETB` +
+      (m.withdrawPending ? ` (+${m.withdrawPending} waiting)` : "") + `\n` +
+      `🎁 Total bonus received: *${admEtb(m.bonusTotal)}* ETB`;
+  } else {
+    text += `\n\n⚠️ Money summary is not available right now.`;
+  }
+
+  const keyboard = [];
+  keyboard.push([
+    { text: `📥 Deposits${m ? ` (${m.depositCount})` : ""}`, callback_data: `admin_udep_${user.id}_1` },
+    { text: `📤 Withdrawals${m ? ` (${m.withdrawCount})` : ""}`, callback_data: `admin_uwd_${user.id}_1` }
+  ]);
+  keyboard.push([
+    user.is_blocked
+      ? { text: "✅ Unblock User", callback_data: `admin_unblock_user_${user.id}` }
+      : { text: "🚫 Block User", callback_data: `admin_block_user_${user.id}` }
+  ]);
+  if (user.is_admin !== true) keyboard.push([{ text: "💳 Money Restrictions", callback_data: `fr_u_${user.id}` }]);
+  keyboard.push([{ text: "👤 Manage Another User", callback_data: "admin_manage_user" }]);
+  keyboard.push([{ text: "🏠 Home", callback_data: "admin_home" }]);
+  keyboard.push([{ text: "❌ Close", callback_data: "admin_manage_user_cancel" }]);
+  return { text, keyboard };
+}
+
+// kind: "dep" | "wd"
+async function adminUserHistoryView(userId, kind, page) {
+  const isDep = kind === "dep";
+  const h = isDep
+    ? await db.getAdminUserDeposits(userId, page, ADM_HIST_PAGE)
+    : await db.getAdminUserWithdrawals(userId, page, ADM_HIST_PAGE);
+  const u = await db.getUserByIdForAdmin(userId);
+
+  let text = `${isDep ? "📥 *Deposit history*" : "📤 *Withdrawal history*"}\n` +
+    `👤 ${mdEsc(u?.name || "User")} · \`${u?.phone || "—"}\`\n` +
+    `Page *${h.page}* of *${h.pages}* · ${h.total} total\n`;
+
+  if (!h.rows.length) {
+    text += `\nNo ${isDep ? "deposits" : "withdrawals"} yet.`;
+  } else {
+    h.rows.forEach((r, i) => {
+      const n = (h.page - 1) * h.pageSize + i + 1;
+      text += `\n*${n}.* ${mdEsc(r.method_name || "—")} · *${admEtb(r.amount)} ETB* · ${admStatus(r.status)}\n`;
+      if (isDep) {
+        text += `    🔖 Ref: \`${r.reference || "—"}\`\n`;
+        text += `    🏦 Deposit account: \`${r.deposit_account || "—"}\`\n`;
+      } else {
+        text += `    🏦 Account: \`${r.account_number || "—"}\`\n`;
+      }
+      text += `    🕒 ${r.when_text}\n`;
+    });
+  }
+
+  const pre = isDep ? "admin_udep_" : "admin_uwd_";
+  const nav = [];
+  if (h.page > 1) nav.push({ text: "⬅️ Previous", callback_data: `${pre}${userId}_${h.page - 1}` });
+  if (h.page < h.pages) nav.push({ text: "Next ➡️", callback_data: `${pre}${userId}_${h.page + 1}` });
+  const keyboard = [];
+  if (nav.length) keyboard.push(nav);
+  keyboard.push([{ text: isDep ? "📤 Withdrawals" : "📥 Deposits", callback_data: `${isDep ? "admin_uwd_" : "admin_udep_"}${userId}_1` }]);
+  keyboard.push([{ text: "⬅️ Back to user", callback_data: `admin_uinfo_${userId}` }]);
+  keyboard.push([{ text: "🏠 Home", callback_data: "admin_home" }]);
+  return { text, keyboard };
+}
+
+async function adminMainOnly(ctx) {
+  const admin = await db.getAdminByTelegramId(ctx.from.id);
+  if (!admin || admin.admin_role !== "main") {
+    await respond("reply", ctx, "⛔ You are not authorized.");
+    return false;
+  }
+  return true;
+}
+
+bot.callbackQuery(/^admin_uinfo_(\d+)$/, async (ctx) => {
+  try {
+    await ctx.answerCallbackQuery();
+    if (!(await adminMainOnly(ctx))) return;
+    const user = await db.getUserByIdForAdmin(Number(ctx.match[1]));
+    if (!user) return respond("reply", ctx, "❌ User not found.");
+    const c = await adminUserCard(user);
+    await respond("edit", ctx, c.text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: c.keyboard } });
+  } catch (e) {
+    console.error("admin_uinfo error:", e);
+    await respond("reply", ctx, "❌ Something went wrong.");
+  }
+});
+
+bot.callbackQuery(/^admin_(udep|uwd)_(\d+)_(\d+)$/, async (ctx) => {
+  try {
+    await ctx.answerCallbackQuery();
+    if (!(await adminMainOnly(ctx))) return;
+    const v = await adminUserHistoryView(Number(ctx.match[2]), ctx.match[1] === "udep" ? "dep" : "wd", Number(ctx.match[3]));
+    await respond("edit", ctx, v.text, { parse_mode: "Markdown", reply_markup: { inline_keyboard: v.keyboard } });
+  } catch (e) {
+    console.error("admin user history error:", e);
+    await respond("reply", ctx, "❌ Something went wrong.");
+  }
+});
+
 bot.callbackQuery("admin_manage_user", async (ctx) => {
 
   try {
