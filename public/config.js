@@ -1,6 +1,6 @@
 // Vercel serverless function (deploy as api/config.js)
 //   GET /api/config        -> JSON { name, version, title, apiBase }
-//   GET /api/config?js=1   -> JavaScript: window.BETESEB_ENV = {...}   (index.html loads this first)
+//   GET /api/config?js=1   -> JavaScript: window.MESOB_ENV = {...}   (index.html loads this first)
 // Vercel environment variables:
 //   API_BASE      game server URL (https:// or wss://); default wss://game-server-go-three-production.up.railway.app
 //   DATA_BASE     data server URL (profile + winners); default https://fecher-api-three-production.up.railway.app
@@ -22,7 +22,7 @@ module.exports = (req, res) => {
   res.setHeader("Cache-Control", "public, max-age=300, s-maxage=300");
   if (String(req.query && req.query.js) === "1") {
     res.setHeader("Content-Type", "application/javascript; charset=utf-8");
-    res.status(200).send("window.BETESEB_ENV=" + JSON.stringify(cfg) + ";");
+    res.status(200).send("window.MESOB_ENV=" + JSON.stringify(cfg) + ";");
   } else {
     res.status(200).json(cfg);
   }

@@ -179,7 +179,7 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" -v ON_ERROR_STOP=1 -f bbpback
 <script>
 (function(){
   var $=function(i){return document.getElementById(i);};
-  var base=((window.BETESEB_ENV&&BETESEB_ENV.dataBase)||'').replace(/\/+$/,'');
+  var base=((window.MESOB_ENV&&MESOB_ENV.dataBase)||'').replace(/\/+$/,'');
   var tg=null; try{ tg=window.Telegram&&Telegram.WebApp; if(tg&&tg.initData){ tg.ready(); tg.expand(); } else tg=null; }catch(e){ tg=null; }
   var token=''; try{ token=sessionStorage.getItem('adm_tok')||''; }catch(e){}
   var role='', timer=null, busy=false, tab='ov';

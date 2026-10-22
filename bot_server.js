@@ -13,10 +13,12 @@ const PUBLIC_URL = String(process.env.PUBLIC_URL || (process.env.RAILWAY_PUBLIC_
 const HOOK_PATH = "/api/bot";
 
 const server = http.createServer((req, res) => {
-  if (req.url === "/" || req.url === "/health") { res.writeHead(200, { "content-type": "text/plain" }); return res.end("ok"); }
-  if (req.method === "POST" && req.url.split("?")[0] === HOOK_PATH) {
+  const p = req.url.split("?")[0];
+  // Telegram updates are POSTs; accept them on /api/bot and also on "/" in case the webhook was set to the bare domain
+  if (req.method === "POST" && (p === HOOK_PATH || p === "/")) {
     return Promise.resolve(handler(req, res)).catch(e => { console.error("webhook:", e); if (!res.headersSent) { res.writeHead(500); res.end(); } });
   }
+  if (p === "/" || p === "/health") { res.writeHead(200, { "content-type": "text/plain" }); return res.end("ok"); }
   res.writeHead(404); res.end();
 });
 server.listen(PORT, () => {
