@@ -186,8 +186,8 @@ const FLOWS = {
   },
   wd_process_fail: { en: "❌ Could not process your withdrawal request.", am: "❌ የወጪ ጥያቄውን ማስኬድ አልተቻለም።" },
   support_text: {
-    en: "🆘 Need help?\n\n👇 For any question or feedback 👇\n\n👤 @mesobgamessupport",
-    am: "🆘 ድጋፍ ይፈልጋሉ?\n\n👇 ለማንኛውም ጥያቄ ወይም አስተያየት 👇\n\n👤 @mesobgamessupport"
+    en: "🆘 Need help?\n\n👇 For any question or feedback 👇\n\n👤 @mesobbingosupport",
+    am: "🆘 ድጋፍ ይፈልጋሉ?\n\n👇 ለማንኛውም ጥያቄ ወይም አስተያየት 👇\n\n👤 @mesobbingosupport"
   },
   lb_title: { en: "🏆 *Leaderboard*", am: "🏆 *የደረጃ ሰንጠረዥ*" },
   lb_empty: { en: "No games yet!", am: "እስካሁን ምንም ጨዋታ የለም!" },
