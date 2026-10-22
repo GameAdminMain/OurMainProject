@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script>/* one-time move of saved settings from the old beteseb* names to mesob* (keeps players logged in) */(function(){try{[window.localStorage,window.sessionStorage].forEach(function(s){if(!s)return;var ks=[];for(var i=0;i<s.length;i++)ks.push(s.key(i));ks.forEach(function(k){if(k&&k.indexOf('beteseb')===0){var n='mesob'+k.slice(7);if(s.getItem(n)===null)s.setItem(n,s.getItem(k));s.removeItem(k);}});});}catch(e){}})();</script>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Verify a game</title>
+<script src="lang.js"></script>
+<script src="/api/config?js=1"></script>
+<style>
+:root{--bg:#0b061c;--panel:#1d1233;--line:rgba(255,255,255,.12);--txt:#fff;--mut:#b8baf5;--gold:#ffd43b;--ok:#34d399;--bad:#f87171}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 Inter,system-ui,sans-serif;padding:calc(env(safe-area-inset-top,0px) + 16px) 16px 40px}
+main{max-width:640px;margin:0 auto}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:13.5px;margin:0 0 16px}
+form{display:flex;gap:8px;margin-bottom:14px}
+input{flex:1;min-width:0;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--panel);color:#fff;font:inherit}
+button{padding:12px 16px;border-radius:12px;border:0;background:linear-gradient(135deg,#ffcc00,#d4aa00);color:#1b1030;font:700 14px inherit;cursor:pointer}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+.verdict{font-size:18px;font-weight:800;margin:0 0 6px}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.wait{color:var(--gold)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:13px}
+.kv b{color:var(--mut);font-weight:600}
+code{font:12px ui-monospace,Menlo,monospace;word-break:break-all;color:#e7e3ff}
+.row{margin:6px 0;font-size:14px}
+.grid{display:grid;grid-template-columns:repeat(15,1fr);gap:3px;margin-top:8px}
+.grid i{font-style:normal;text-align:center;font-size:11px;padding:4px 0;border-radius:6px;background:rgba(255,255,255,.06);color:var(--mut)}
+.grid i.c{background:rgba(255,212,59,.22);color:#fff;font-weight:700}
+details{margin-top:8px;color:var(--mut);font-size:13px}
+a{color:var(--gold)}
+@media(max-width:480px){.grid{grid-template-columns:repeat(10,1fr)}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<main>
+  <h1 id="h">Verify a game</h1>
+  <p class="sub" id="sub">Before every round the game server locks in the order of all 75 numbers with a fingerprint (SHA-256). After the round the order is revealed. This page recomputes the fingerprint in your browser.</p>
+  <form id="f"><input id="code" placeholder="Game ID" autocomplete="off" autocapitalize="characters" aria-label="Game ID"><button id="go">Check</button></form>
+  <div id="out"></div>
+  <details><summary id="howT">How is the fingerprint made?</summary>
+    <p id="how">fingerprint = SHA-256( salt + ":" + numbers in call order joined by "," ), for example SHA-256("a1b2…:23,7,61,…"). The fingerprint was shown in the game before any number was called, so the order could not be changed afterwards.</p>
+  </details>
+</main>
+<script>
+(function(){
+  var L=((new URLSearchParams(location.search).get('lang'))||localStorage.getItem('mesobLang')||'en').slice(0,2).toLowerCase();
+  if(L!=='am') L='en';
+  var X={en:{h:'Verify a game',go:'Check',ph:'Game ID',loading:'Loading…',nf:'Game not found.',err:'Could not load the game. Try again later.',
+    running:'This game is not finished yet. The fingerprint is already locked; the order will be shown when the game ends.',
+    okT:'✔ Fair: the draw matches the fingerprint',
+    okD:'The order was fixed before the game started, and the numbers drawn in this game are exactly the first ones of it.',
+    badT:'✘ The check failed',badD:'The revealed order does not match the fingerprint, or the called numbers differ from the order.',
+    stake:'Stake',status:'Status',cards:'Cartelas',started:'Started',ended:'Ended',fp:'Fingerprint (commitment)',salt:'Salt',
+    c1:'Fingerprint recomputed from salt + order',c2:'The called numbers are exactly the first numbers of the order',c3:'Matches the fingerprint you saw in the game',
+    yours:'Fingerprint you saw before the game (optional)',order:'Call order (highlighted = called in this game)',
+    sub:'Before every round the game server locks in the order of all 75 numbers with a fingerprint (SHA-256). After the round the order is revealed. This page recomputes the fingerprint in your browser.',
+    howT:'How is the fingerprint made?',how:'fingerprint = SHA-256( salt + ":" + numbers in call order joined by "," ), for example SHA-256("a1b2…:23,7,61,…"). The fingerprint was shown in the game before any number was called, so the order could not be changed afterwards.'},
+   am:{h:'ጨዋታን ያረጋግጡ',go:'ፈትሽ',ph:'የጨዋታ መለያ',loading:'በመጫን ላይ…',nf:'ጨዋታው አልተገኘም።',err:'ጨዋታውን መጫን አልተቻለም። ቆይተው ይሞክሩ።',
+    running:'ይህ ጨዋታ ገና አላበቃም። የጣት አሻራው ተቆልፏል፤ ጨዋታው ሲያበቃ ቅደም ተከተሉ ይታያል።',
+    okT:'✔ ፍትሃዊ ነው፦ ዕጣው ከጣት አሻራው ጋር ይመሳሰላል',
+    okD:'ቅደም ተከተሉ ጨዋታው ሳይጀምር ተወስኗል፤ በዚህ ጨዋታ የተጠሩት ቁጥሮች የመጀመሪያዎቹ ናቸው።',
+    badT:'✘ ማረጋገጫው አልተሳካም',badD:'የተገለጸው ቅደም ተከተል ከጣት አሻራው ጋር አይመሳሰልም፣ ወይም የተጠሩት ቁጥሮች ከቅደም ተከተሉ ይለያያሉ።',
+    stake:'የውርርድ መጠን',status:'ሁኔታ',cards:'ካርቴላ',started:'የጀመረው',ended:'ያበቃው',fp:'የጣት አሻራ (commitment)',salt:'ጨው (salt)',
+    c1:'ከጨው + ቅደም ተከተል እንደገና የተሰላ የጣት አሻራ',c2:'የተጠሩት ቁጥሮች በትክክል የቅደም ተከተሉ የመጀመሪያ ቁጥሮች ናቸው',c3:'በጨዋታው ውስጥ ካዩት የጣት አሻራ ጋር ይመሳሰላል',
+    yours:'ከጨዋታው በፊት ያዩት የጣት አሻራ (አማራጭ)',order:'የጥሪ ቅደም ተከተል (ደመቀ = በዚህ ጨዋታ የተጠራ)',
+    sub:'ከእያንዳንዱ ዙር በፊት የጨዋታ አገልጋዩ የ75ቱን ቁጥሮች ቅደም ተከተል በጣት አሻራ (SHA-256) ይቆልፋል። ዙሩ ሲያበቃ ቅደም ተከተሉ ይገለጻል። ይህ ገጽ የጣት አሻራውን በአሳሽዎ ውስጥ እንደገና ያሰላል።',
+    howT:'የጣት አሻራው እንዴት ይሠራል?',how:'የጣት አሻራ = SHA-256( ጨው + ":" + በጥሪ ቅደም ተከተል በ "," የተያያዙ ቁጥሮች )። የጣት አሻራው ማንኛውም ቁጥር ከመጠራቱ በፊት በጨዋታው ውስጥ ታይቷል፣ ስለዚህ ቅደም ተከተሉ በኋላ ሊቀየር አይችልም።'}}[L];
+  var $=function(i){return document.getElementById(i);};
+  document.documentElement.lang=L; $('h').textContent=X.h; $('go').textContent=X.go; $('code').placeholder=X.ph; $('sub').textContent=X.sub; $('howT').textContent=X.howT; $('how').textContent=X.how;
+  document.title=X.h;
+  var base=((window.MESOB_ENV&&MESOB_ENV.dataBase)||'').replace(/\/+$/,'');
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  async function sha256(t){ var b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(t)); return Array.from(new Uint8Array(b)).map(function(x){return x.toString(16).padStart(2,'0');}).join(''); }
+  function fmt(t){ try{ return t?new Date(t).toLocaleString():'—'; }catch(e){ return '—'; } }
+  var data=null;
+  async function render(){
+    var g=data, out=$('out'); if(!g) return;
+    var mine=($('mine')&&$('mine').value||'').trim().toLowerCase();
+    var html='';
+    var head='<div class="card"><div class="kv"><b>ID</b><span>'+esc(g.gameCode)+'</span><b>'+X.stake+'</b><span>'+esc(g.stake)+' ETB</span><b>'+X.status+'</b><span>'+esc(g.status)+'</span><b>'+X.cards+'</b><span>'+esc(g.cards)+'</span><b>'+X.started+'</b><span>'+esc(fmt(g.startedAt))+'</span><b>'+X.ended+'</b><span>'+esc(fmt(g.endedAt))+'</span><b>'+X.fp+'</b><code>'+esc(g.commitment||'—')+'</code></div></div>';
+    if(!g.order||!g.salt){
+      out.innerHTML='<div class="card"><p class="verdict wait">⏳ '+esc(X.running)+'</p></div>'+head; return;
+    }
+    var recomputed=await sha256(g.salt+':'+g.order.join(','));
+    var c1=recomputed===g.commitment;
+    var called=g.called||[]; var cs0=new Set(called), c2=new Set(g.order).size===75 && cs0.size===called.length && g.order.slice(0,called.length).every(function(n){return cs0.has(n);});   // the database keeps the called numbers sorted, so compare as a set
+    var c3=mine?(mine===g.commitment):null;
+    var ok=c1&&c2&&(c3!==false);
+    var mark=function(v){return v===null?'•':(v?'<span class="ok">✔</span>':'<span class="bad">✘</span>');};
+    html+='<div class="card"><p class="verdict '+(ok?'ok':'bad')+'">'+(ok?X.okT:X.badT)+'</p><p class="sub" style="margin:0">'+(ok?X.okD:X.badD)+'</p>'
+      +'<div class="row">'+mark(c1)+' '+X.c1+'</div><div class="row">'+mark(c2)+' '+X.c2+'</div><div class="row">'+mark(c3)+' '+X.c3+'</div></div>';
+    html+=head;
+    html+='<div class="card"><div class="kv"><b>'+X.salt+'</b><code>'+esc(g.salt)+'</code></div><div class="row" style="margin-top:10px">'+X.yours+'</div><input id="mine" value="'+esc(mine)+'" placeholder="64 hex" autocomplete="off" style="width:100%;margin-top:6px"></div>';
+    var cs=new Set(called);
+    html+='<div class="card"><div class="row">'+X.order+'</div><div class="grid">'+g.order.map(function(n){return '<i class="'+(cs.has(n)?'c':'')+'">'+n+'</i>';}).join('')+'</div></div>';
+    out.innerHTML=html;
+    var m=$('mine'); if(m){ m.oninput=function(){ render().then(function(){ var e=$('mine'); if(e){ e.focus(); e.setSelectionRange(e.value.length,e.value.length); } }); }; }
+  }
+  async function load(code){
+    code=String(code||'').trim(); if(!code) return;
+    $('out').innerHTML='<div class="card">'+X.loading+'</div>'; data=null;
+    history.replaceState(null,'','?game='+encodeURIComponent(code)+(L==='am'?'&lang=am':''));
+    try{
+      var r=await fetch(base+'/api/verify/'+encodeURIComponent(code));
+      if(r.status===404){ $('out').innerHTML='<div class="card bad">'+X.nf+'</div>'; return; }
+      if(!r.ok) throw new Error(r.status);
+      data=await r.json(); await render();
+    }catch(e){ $('out').innerHTML='<div class="card bad">'+X.err+'</div>'; }
+  }
+  $('f').onsubmit=function(e){ e.preventDefault(); load($('code').value); };
+  var q=new URLSearchParams(location.search); var first=q.get('game')||q.get('id')||'';
+  if(first){ $('code').value=first; load(first); }
+})();
+</script>
+</body>
+</html>

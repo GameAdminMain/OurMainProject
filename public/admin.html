@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Admin dashboard</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="/api/config?js=1"></script>
+<style>
+:root{--bg:#0d0d0d;--surface:#1a1a19;--line:#383835;--ink:#f0efec;--ink2:#c3c2b7;--mut:#8d8c85;
+  --s1:#3987e5;--s2:#d95926;--s3:#199e70;--good:#0ca30c;--warn:#fab219;--serious:#ec835a;--crit:#d03b3b}
+*{box-sizing:border-box}
+html{color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 Inter,system-ui,-apple-system,sans-serif;padding:calc(env(safe-area-inset-top,0px) + 12px) 14px 60px}
+main{max-width:1100px;margin:0 auto}
+header{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+h1{font-size:20px;margin:0;flex:1}
+.pill{font-size:12px;color:var(--ink2);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:3px 10px}
+button,select,input,textarea{font:inherit;color:var(--ink)}
+button{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:7px 12px;cursor:pointer}
+button:hover{border-color:var(--mut)}
+button.primary{background:var(--s1);border-color:var(--s1);color:#fff}
+button:disabled{opacity:.5;cursor:default}
+nav{display:flex;gap:6px;overflow-x:auto;margin-bottom:12px;position:sticky;top:0;background:var(--bg);padding:6px 0;z-index:5}
+nav button.on{background:var(--ink);color:#111;border-color:var(--ink)}
+section{display:none}section.on{display:block}
+.grid{display:grid;gap:10px}
+.tiles{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px}
+.tile small{display:block;color:var(--ink2);font-size:12px}
+.tile b{display:block;font-size:22px;margin-top:2px;font-variant-numeric:tabular-nums}
+.tile span{font-size:12px;color:var(--mut)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px;margin-top:10px;overflow:hidden}
+.card h2{font-size:14px;margin:0 0 8px;color:var(--ink)}
+.two{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{color:var(--ink2);font-weight:600;text-align:left;border-bottom:1px solid var(--line);padding:6px 8px 6px 0;white-space:nowrap}
+td{border-bottom:1px solid #2a2a28;padding:6px 8px 6px 0;vertical-align:top}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
+.wrap{overflow-x:auto}
+.empty{color:var(--mut);padding:6px 0}
+.st{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;white-space:nowrap}
+.st.good{color:var(--good)}.st.warn{color:var(--warn)}.st.serious{color:var(--serious)}.st.crit{color:#ee6a6a}
+.flag{display:inline-block;font-size:11px;font-weight:700;border:1px solid var(--warn);color:var(--warn);border-radius:6px;padding:0 5px;margin-right:4px}
+.attn{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));margin-bottom:6px}
+.attn a{display:flex;gap:8px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:10px;color:var(--ink);text-decoration:none;cursor:pointer}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--ink2);margin-bottom:4px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+svg text{fill:var(--ink2);font-size:10px}
+.tip{position:fixed;pointer-events:none;background:#000;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;z-index:20;display:none}
+form.set{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+form.set label{display:grid;gap:3px;font-size:12px;color:var(--ink2)}
+form.set input[type=number]{background:#111;border:1px solid var(--line);border-radius:8px;padding:7px}
+form.set small{color:var(--mut)}
+textarea{width:100%;min-height:110px;background:#111;border:1px solid var(--line);border-radius:8px;padding:8px;font:12px ui-monospace,Menlo,monospace}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
+code,pre{font:12px ui-monospace,Menlo,monospace}
+pre{white-space:pre-wrap;word-break:break-word;margin:4px 0;color:var(--ink2)}
+details{margin:4px 0}
+summary{cursor:pointer}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.seg button{border:0;border-radius:0;background:transparent}
+.seg button.on{background:var(--ink);color:#111}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.dot.on{background:var(--good)}.dot.off{background:var(--mut)}
+input.find{background:#111;border:1px solid var(--line);border-radius:8px;padding:7px;min-width:180px}
+#gate{max-width:380px;margin:18vh auto;text-align:center}
+#gate input{width:100%;background:#111;border:1px solid var(--line);border-radius:10px;padding:10px;margin:10px 0}
+.msg{font-size:12px;color:var(--ink2)}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<main>
+<div id="gate" hidden>
+  <h1>Admin dashboard</h1>
+  <p class="msg" id="gateHint">Restricted: only the main admin and statistics admins can open this dashboard. Open it from the bot's admin menu (📊 Open dashboard).</p>
+  <input id="tok" type="password" placeholder="Admin token" autocomplete="off" aria-label="Admin token" hidden>
+  <button class="primary" id="tokGo" hidden>Open</button>
+  <div class="msg" id="gateMsg"></div>
+</div>
+
+<div id="app" hidden>
+<header>
+  <h1>Admin dashboard</h1>
+  <span class="pill" id="who">—</span>
+  <span class="pill" id="upd">—</span>
+  <button id="liveBtn" aria-label="Who is playing and who is online">👥 Live players</button>
+  <button id="refresh" aria-label="Refresh now">↻ Refresh</button>
+</header>
+<nav id="tabs" role="tablist">
+  <button data-t="ov" class="on" role="tab">Overview</button>
+  <button data-t="lv" role="tab">👥 Live players</button>
+  <button data-t="qu" role="tab">Queues</button>
+  <button data-t="rc" role="tab">Reconciliation</button>
+  <button data-t="st" role="tab">Safety settings</button>
+  <button data-t="er" role="tab">Page errors</button>
+  <button data-t="bk" role="tab">Backup</button>
+</nav>
+
+<section id="ov" class="on">
+  <div class="attn" id="attn"></div>
+  <div class="grid tiles" id="tiles"></div>
+  <div class="grid two">
+    <div class="card"><h2>Deposits and withdrawals paid, last 14 days (ETB)</h2>
+      <div class="legend"><span><i style="background:var(--s1)"></i>Deposits</span><span><i style="background:var(--s2)"></i>Withdrawals paid</span></div>
+      <div id="chCash"></div></div>
+    <div class="card"><h2>Commission (revenue) per day (ETB)</h2>
+      <div class="legend"><span><i style="background:var(--s3)"></i>Commission</span></div>
+      <div id="chRev"></div></div>
+  </div>
+  <div class="card"><h2>Money held in wallets</h2><div id="liab"></div></div>
+  <div class="card"><h2>Daily table</h2><div class="wrap" id="dayTbl"></div></div>
+</section>
+
+<section id="lv">
+  <div class="grid tiles" id="lvTiles"></div>
+  <div class="card">
+    <div class="row" style="margin-top:0">
+      <div class="seg" role="tablist" aria-label="Live list">
+        <button data-lv="play" class="on" role="tab">🎮 Playing <span id="lvPN"></span></button>
+        <button data-lv="online" role="tab">🟢 Online only <span id="lvON"></span></button>
+      </div>
+      <input class="find" id="lvFind" placeholder="Search name or Telegram ID" aria-label="Search players">
+      <span class="msg" id="lvMsg"></span>
+    </div>
+    <div class="wrap" id="lvList" style="margin-top:10px"></div>
+    <p class="msg" id="lvNote"></p>
+  </div>
+</section>
+
+<section id="qu">
+  <div class="card"><h2>Live games <span class="pill" id="liveN"></span></h2><div class="wrap" id="live"></div></div>
+  <div class="card"><h2>Withdrawals waiting <span class="pill" id="wdN"></span></h2><div class="wrap" id="wdq"></div></div>
+  <div class="card"><h2>Deposits waiting <span class="pill" id="depN"></span></h2><div class="wrap" id="depq"></div></div>
+  <div class="card"><h2>Flagged withdrawals, last 7 days (already handled)</h2><div class="wrap" id="flg"></div></div>
+</section>
+
+<section id="rc">
+  <div class="card"><h2>Last reconciliation</h2><div id="rcLast"></div>
+    <div class="row"><button class="primary" id="rcRun">Run now</button><label class="msg"><input type="checkbox" id="rcAlert"> send the Telegram alert</label><span class="msg" id="rcMsg"></span></div></div>
+  <div class="card"><h2>Payment provider statement</h2>
+    <p class="msg">Paste lines from the provider's statement (Telebirr, CBE, …), one per line: <code>reference, in|out, amount, account/phone, date</code>. Each night (and on "Run now") the deposits and withdrawals of that period are compared with it.</p>
+    <div class="row"><input id="prov" placeholder="Provider, e.g. telebirr" style="background:#111;border:1px solid var(--line);border-radius:8px;padding:7px"><span class="msg" id="stInfo"></span></div>
+    <textarea id="csv" placeholder="DJE6RRJR88, in, 200.00, 0911223344, 2026-10-14 09:15&#10;OUT55123, out, 1500, 0922334455, 2026-10-14 11:02" aria-label="Statement lines"></textarea>
+    <div class="row"><button id="stGo">Import</button><span class="msg" id="stMsg"></span></div></div>
+  <div class="card"><h2>Previous runs</h2><div id="rcRuns"></div></div>
+</section>
+
+<section id="st">
+  <div class="card"><h2>Withdrawal safety</h2>
+    <p class="msg">Applies to every new withdrawal request. Only a main admin can change it. Changes take effect immediately.</p>
+    <form class="set" id="setForm"></form>
+    <div class="row"><button class="primary" id="setSave">Save</button><span class="msg" id="setMsg"></span></div></div>
+</section>
+
+<section id="bk">
+  <div class="card"><h2>Database backup</h2>
+    <p class="msg">Creates a full copy of the database (every table, function and row) and downloads it as <code>bbpbackup.sql</code>. It reads from the server's <code>DATABASE_URL</code>. Only the main admin can do this; the file contains all player and money data, so keep it private.</p>
+    <div id="bkInfo" class="msg">Loading…</div>
+    <div class="row"><button class="primary" id="bkGo">⬇ Download backup (bbpbackup.sql)</button><span class="msg" id="bkMsg"></span></div>
+    <details><summary class="msg">Install pg_dump / restore the file</summary>
+      <pre>pg_dump must exist on the data server. On Railway the dependable way is a Dockerfile: save the supplied
+Dockerfile.data_server as "Dockerfile" next to data_server.js (set PG_MAJOR to your database version or newer), then redeploy.
+
+Restore into an empty database:
+psql "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" -v ON_ERROR_STOP=1 -f bbpbackup.sql</pre></details>
+  </div>
+</section>
+
+<section id="er">
+  <div class="card"><h2>Crashes in the game page, last 24 hours</h2><div class="wrap" id="errG"></div></div>
+  <div class="card"><h2>Latest reports</h2><div id="errL"></div></div>
+</section>
+</div>
+<div class="tip" id="tip"></div>
+</main>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i);};
+  var base=((window.BETESEB_ENV&&BETESEB_ENV.dataBase)||'').replace(/\/+$/,'');
+  var tg=null; try{ tg=window.Telegram&&Telegram.WebApp; if(tg&&tg.initData){ tg.ready(); tg.expand(); } else tg=null; }catch(e){ tg=null; }
+  var token=''; try{ token=sessionStorage.getItem('adm_tok')||''; }catch(e){}
+  var role='', timer=null, busy=false, tab='ov';
+
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  function n0(v){ return Number(v||0).toLocaleString(undefined,{maximumFractionDigits:0}); }
+  function n2(v){ return Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+  function ago(s){ s=Number(s)||0; if(s<90) return s+'s'; if(s<5400) return Math.round(s/60)+' min'; if(s<172800) return (s/3600).toFixed(1)+' h'; return Math.round(s/86400)+' d'; }
+  function when(t){ try{ return new Date(t).toLocaleString([], {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+  function st(kind,text){ var ic={good:'✔',warn:'▲',serious:'◆',crit:'✖'}[kind]||'•'; return '<span class="st '+kind+'"><span aria-hidden="true">'+ic+'</span>'+esc(text)+'</span>'; }
+
+  async function api(path,opt){
+    opt=opt||{}; var h={};
+    if(tg) h['X-Telegram-Init-Data']=tg.initData; else if(token) h['Authorization']='Bearer '+token;
+    if(opt.body) h['Content-Type']='application/json';
+    var r=await fetch(base+'/api/admin/'+path,{method:opt.method||'GET',headers:h,body:opt.body?JSON.stringify(opt.body):undefined,cache:'no-store'});
+    var j=null; try{ j=await r.json(); }catch(e){}
+    if(r.status===401){ var e=new Error('auth'); e.auth=true; throw e; }
+    if(!r.ok) throw new Error((j&&j.error)||('HTTP '+r.status));
+    return j;
+  }
+
+  /* ---------- gate ---------- */
+  function gate(msg){ $('app').hidden=true; $('gate').hidden=false; $('gateMsg').textContent=msg||''; clearInterval(timer); }
+  // the token box exists only if the server allows token login (off by default: main and statistics admins only)
+  var tokenLogin=false;
+  var modeP=fetch(base+'/api/admin/mode',{cache:'no-store'}).then(function(r){return r.json();}).then(function(m){ tokenLogin=!!(m&&m.tokenLogin); if(tokenLogin&&!tg){ $('tok').hidden=false; $('tokGo').hidden=false; $('gateHint').textContent='Enter the admin token to open the dashboard.'; $('tok').focus(); } }).catch(function(){});
+  $('tokGo').onclick=async function(){ token=$('tok').value.trim(); try{ sessionStorage.setItem('adm_tok',token); }catch(e){} start(); };
+  $('tok').addEventListener('keydown',function(e){ if(e.key==='Enter') $('tokGo').click(); });
+
+  async function start(){
+    try{
+      var w=await api('whoami'); role=w.role;
+      $('gate').hidden=true; $('app').hidden=false;
+      $('who').textContent=(role==='main'?'Main admin':'Statistics admin')+' · '+w.tz;
+      applyRole(); loadAll(); clearInterval(timer); var tick=0; timer=setInterval(function(){ tick++; if(document.hidden) return; if(tab==='lv'||tick%4===0) loadAll(true); },5000);
+    }catch(e){ gate(e.auth?(tg?'Access denied: only the main admin and statistics admins can open this dashboard.':(token?'Not authorised for this dashboard.':'')):('Cannot reach the data server: '+e.message)); if(e.auth&&!tg&&token){ try{ sessionStorage.removeItem('adm_tok'); }catch(_){} } }
+  }
+  function applyRole(){ var main=role==='main'; ['rcRun','stGo','setSave','bkGo'].forEach(function(i){ $(i).disabled=!main; $(i).title=main?'':'Main admin only'; }); }
+
+  /* ---------- tabs ---------- */
+  $('tabs').onclick=function(e){ var b=e.target.closest('button[data-t]'); if(!b) return; setTab(b.dataset.t); };
+  function setTab(t){ tab=t; document.querySelectorAll('#tabs button').forEach(function(b){ b.classList.toggle('on',b.dataset.t===t); b.setAttribute('aria-selected',b.dataset.t===t); });
+    document.querySelectorAll('main section').forEach(function(s){ s.classList.toggle('on',s.id===t); }); loadAll(true); }
+  $('refresh').onclick=function(){ loadAll(); };
+
+  /* ---------- backup ---------- */
+  var bkReady=false;
+  function fmtBytes(b){ b=Number(b)||0; if(b<1024) return b+' B'; if(b<1048576) return (b/1024).toFixed(1)+' KB'; if(b<1073741824) return (b/1048576).toFixed(1)+' MB'; return (b/1073741824).toFixed(2)+' GB'; }
+  function renderBackup(d){
+    var el=$('bkInfo');
+    if(!d){ el.textContent='Only the main admin can download a backup.'; $('bkGo').disabled=true; return; }
+    bkReady=!!d.ready;
+    var h='Database: <b>'+esc(d.dbName||'?')+'</b>'+(d.dbBytes!=null?' · size on disk '+fmtBytes(d.dbBytes):'')+(d.tool?' · '+esc(d.tool):'');
+    if(d.problem) h+='<br><span class="st serious"><span aria-hidden="true">◆</span>'+esc(d.problem)+'</span>';
+    else h+='<br><span class="st good"><span aria-hidden="true">✔</span>Ready</span>';
+    if(d.last){ h+='<br>Last backup: '+when(d.last.at)+' · '+(d.last.ok?'<span class="st good"><span aria-hidden="true">✔</span>'+fmtBytes(d.last.bytes)+' in '+Math.max(1,Math.round(d.last.ms/1000))+' s</span>':'<span class="st crit"><span aria-hidden="true">✖</span>failed: '+esc(d.last.error||'')+'</span>'); }
+    el.innerHTML=h;
+    $('bkGo').disabled=!(role==='main'&&d.ready&&!d.running);
+  }
+  $('bkGo').onclick=async function(){
+    var b=$('bkGo'), m=$('bkMsg'); b.disabled=true; m.textContent='Preparing the download link…';
+    try{
+      var t=await api('backup/ticket',{method:'POST',body:{}});
+      var url=base+t.url;
+      m.textContent='The download starts now. The database is being exported, large databases take a minute.';
+      if(tg&&tg.openLink) tg.openLink(url); else window.location.href=url;
+      setTimeout(function(){ m.textContent=''; b.disabled=false; loadAll(true); },20000);
+    }catch(e){ m.textContent=e.auth?'Not authorised.':('Could not start: '+e.message); b.disabled=false; }
+  };
+
+  /* ---------- charts (plain SVG, hover tooltips) ---------- */
+  var tip=$('tip');
+  function showTip(ev,html){ tip.innerHTML=html; tip.style.display='block'; var x=Math.min(ev.clientX+12,innerWidth-190); tip.style.left=x+'px'; tip.style.top=(ev.clientY+14)+'px'; }
+  function hideTip(){ tip.style.display='none'; }
+  function bars(el,days,series){
+    var W=520,H=190,L=44,B=22,T=8,R=6, iw=W-L-R, ih=H-T-B;
+    var max=0; days.forEach(function(d){ series.forEach(function(s){ max=Math.max(max,Number(d[s.k])||0); }); });
+    var top=niceMax(max||1), g='', gw=iw/days.length, bw=Math.min(14,(gw-6)/series.length-2);
+    for(var i=0;i<=4;i++){ var v=top*i/4, y=T+ih-ih*i/4; g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y+'" y2="'+y+'" stroke="#2a2a28"/><text x="'+(L-6)+'" y="'+(y+3)+'" text-anchor="end">'+short(v)+'</text>'; }
+    days.forEach(function(d,i){
+      var cx=L+gw*i+gw/2, x0=cx-(series.length*(bw+2)-2)/2;
+      series.forEach(function(s,j){
+        var v=Number(d[s.k])||0, h=ih*v/top, x=x0+j*(bw+2), y=T+ih-h;
+        if(v>0) g+='<path d="M'+x+' '+(T+ih)+'V'+(y+3)+'a3 3 0 0 1 3 -3h'+(bw-6)+'a3 3 0 0 1 3 3V'+(T+ih)+'Z" fill="'+s.c+'"/>';
+      });
+      g+='<rect x="'+(L+gw*i)+'" y="'+T+'" width="'+gw+'" height="'+(ih+B)+'" fill="transparent" data-i="'+i+'"/>';
+      if(i%2===0||days.length<8) g+='<text x="'+cx+'" y="'+(H-6)+'" text-anchor="middle">'+d.day.slice(5)+'</text>';
+    });
+    el.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" width="100%" role="img" aria-label="Bar chart, last '+days.length+' days">'+g+'</svg>';
+    el.querySelectorAll('rect[data-i]').forEach(function(r){
+      r.onmousemove=function(ev){ var d=days[r.dataset.i]; showTip(ev,'<b>'+d.day+'</b><br>'+series.map(function(s){return '<span style="color:'+s.c+'">■</span> '+s.n+': '+n2(d[s.k]);}).join('<br>')); };
+      r.onmouseleave=hideTip;
+    });
+  }
+  function niceMax(v){ var p=Math.pow(10,Math.floor(Math.log10(v))), f=v/p; return (f<=1?1:f<=2?2:f<=5?5:10)*p; }
+  function short(v){ return v>=1e6?(v/1e6).toFixed(1)+'M':v>=1e3?(v/1e3).toFixed(v>=1e4?0:1)+'k':String(Math.round(v)); }
+
+  /* ---------- renderers ---------- */
+  function renderOverview(o){
+    var t=o.today, op=o.open, items=[];
+    items.push(op.stuck>0?['serious','◆',op.stuck+' stuck game(s)','qu']:['good','✔','No stuck games','qu']);
+    items.push(op.wd_review>0?['warn','▲',op.wd_review+' withdrawal(s) need a main admin','qu']:['good','✔','No flagged withdrawals','qu']);
+    items.push(op.wd_open>0?['warn','▲',op.wd_open+' withdrawal(s) waiting · '+n2(op.wd_open_sum)+' ETB','qu']:['good','✔','No withdrawals waiting','qu']);
+    items.push(op.dep_open>0?['warn','▲',op.dep_open+' deposit(s) waiting','qu']:['good','✔','No deposits waiting','qu']);
+    if(o.errors24h!=null) items.push(o.errors24h>=20?['serious','◆',o.errors24h+' page crashes in 24 h','er']:['good','✔',o.errors24h+' page crash(es) in 24 h','er']);
+    $('attn').innerHTML=items.map(function(i){ return '<a data-go="'+i[3]+'">'+st(i[0]==='good'?'good':i[0],'')+'<span>'+esc(i[2])+'</span></a>'; }).join('');
+    document.querySelectorAll('#attn a').forEach(function(a){ a.onclick=function(){ setTab(a.dataset.go); }; });
+    var T=function(l,v,s){ return '<div class="tile"><small>'+l+'</small><b>'+v+'</b><span>'+(s||'&nbsp;')+'</span></div>'; };
+    $('tiles').innerHTML=
+      T('Revenue (commission) today',n2(t.games.commission)+' ETB',t.games.played+' games played')+
+      T('Deposits today',n2(t.deposits.sum)+' ETB',t.deposits.n+' deposits')+
+      T('Withdrawals paid today',n2(t.withdrawalsPaid.sum)+' ETB',t.withdrawalsPaid.n+' paid')+
+      T('Net cash today',n2(t.netCash)+' ETB','deposits − withdrawals')+
+      T('Prizes paid today',n2(t.games.prizes)+' ETB','gross pot '+n2(t.games.gross))+
+      T('New players today',n0(t.newUsers),t.games.cancelled+' games cancelled');
+    bars($('chCash'),o.series,[{k:'deposits',n:'Deposits',c:'#3987e5'},{k:'withdrawals',n:'Withdrawals paid',c:'#d95926'}]);
+    bars($('chRev'),o.series,[{k:'commission',n:'Commission',c:'#199e70'}]);
+    var tot=o.liabilities.reduce(function(a,b){return a+Number(b.sum);},0);
+    $('liab').innerHTML='<table><tr>'+o.liabilities.map(function(l){return '<th class="n">'+esc(l.wallet_type)+'</th>';}).join('')+'<th class="n">total</th></tr><tr>'+o.liabilities.map(function(l){return '<td class="n">'+n2(l.sum)+'</td>';}).join('')+'<td class="n"><b>'+n2(tot)+'</b></td></tr></table>';
+    $('dayTbl').innerHTML='<table><tr><th>Day</th><th class="n">Deposits</th><th class="n">Withdrawals</th><th class="n">Commission</th><th class="n">Games</th></tr>'+
+      o.series.slice().reverse().map(function(d){ return '<tr><td>'+d.day+'</td><td class="n">'+n2(d.deposits)+'</td><td class="n">'+n2(d.withdrawals)+'</td><td class="n">'+n2(d.commission)+'</td><td class="n">'+d.games+'</td></tr>'; }).join('')+'</table>';
+  }
+  function tbl(head,rows,empty){ if(!rows.length) return '<div class="empty">'+empty+'</div>'; return '<table><tr>'+head.map(function(h){return '<th'+(h[1]?' class="n"':'')+'>'+h[0]+'</th>';}).join('')+'</tr>'+rows.join('')+'</table>'; }
+  function renderQueues(q){
+    $('liveN').textContent=q.live.length; $('wdN').textContent=q.withdrawals.length; $('depN').textContent=q.deposits.length;
+    $('live').innerHTML=tbl([['Game'],['Status'],['Stake',1],['Cartelas',1],['Gross pot',1],['Age'],['']],q.live.map(function(g){
+      return '<tr><td><code>'+esc(g.game_code)+'</code></td><td>'+esc(g.status)+'</td><td class="n">'+n2(g.stake_amount)+'</td><td class="n">'+g.card_count+'</td><td class="n">'+n2(g.gross_pot)+'</td><td>'+ago(g.age_s)+'</td><td>'+(g.stuck?st('serious','stuck'):st('good','live'))+'</td></tr>'; }),'No game is running right now.');
+    $('wdq').innerHTML=tbl([['#'],['Player'],['Amount',1],['Method'],['Account'],['Status'],['Waiting'],['Flags']],q.withdrawals.map(function(w){
+      return '<tr><td>'+w.id+'</td><td>'+esc(w.name)+'<br><small class="msg">'+esc(w.telegram_id)+'</small></td><td class="n">'+n2(w.amount)+'</td><td>'+esc(w.method||'')+'</td><td><code>'+esc(w.account_number||'')+'</code></td><td>'+esc(w.status)+'</td><td>'+ago(w.age_s)+'</td><td>'+(w.needs_review?(w.risk_flags||[]).map(function(f){return '<span class="flag">'+esc(f)+'</span>';}).join('')+'<br>'+st('warn','main admin only'):'')+'</td></tr>'; }),'No withdrawals waiting.');
+    $('depq').innerHTML=tbl([['#'],['Player'],['Amount',1],['Reference'],['Status'],['Waiting']],q.deposits.map(function(d){
+      return '<tr><td>'+d.id+'</td><td>'+esc(d.name)+'<br><small class="msg">'+esc(d.telegram_id)+'</small></td><td class="n">'+n2(d.amount)+'</td><td><code>'+esc(d.reference||'')+'</code></td><td>'+esc(d.status)+'</td><td>'+(d.age_s>7200?st('warn',ago(d.age_s)):ago(d.age_s))+'</td></tr>'; }),'No deposits waiting.');
+    $('flg').innerHTML=tbl([['#'],['Player'],['Amount',1],['Result'],['Flags'],['When']],q.flaggedRecent.map(function(w){
+      return '<tr><td>'+w.id+'</td><td>'+esc(w.name)+'</td><td class="n">'+n2(w.amount)+'</td><td>'+esc(w.status)+'</td><td>'+(w.risk_flags||[]).map(function(f){return '<span class="flag">'+esc(f)+'</span>';}).join('')+'</td><td>'+when(w.created_at)+'</td></tr>'; }),'None.');
+  }
+  function sevSt(s){ return s==='critical'?st('crit','critical'):s==='warn'?st('warn','warning'):st('good','info'); }
+  function renderRecon(r){
+    var l=r.last;
+    if(!l) $('rcLast').innerHTML='<div class="empty">No run yet. It runs every night, or press “Run now”.</div>';
+    else{
+      var h='<p>'+(l.critical?st('crit',l.critical+' critical'):st('good','No critical problems'))+' &nbsp; '+(l.warnings?st('warn',l.warnings+' warning(s)'):'')+' <span class="msg">· '+when(l.ran_at)+'</span></p>';
+      h+=(l.findings.length?'':'<div class="empty">Everything adds up.</div>');
+      l.findings.forEach(function(f){
+        h+='<details'+(f.severity==='critical'?' open':'')+'><summary>'+sevSt(f.severity)+' '+esc(f.title)+' — <b>'+f.count+'</b></summary>'+
+           (f.sample&&f.sample.length?'<div class="wrap"><table><tr>'+Object.keys(f.sample[0]).map(function(k){return '<th>'+esc(k)+'</th>';}).join('')+'</tr>'+f.sample.map(function(s){return '<tr>'+Object.keys(f.sample[0]).map(function(k){return '<td>'+esc(s[k])+'</td>';}).join('')+'</tr>';}).join('')+'</table></div>'+(f.count>f.sample.length?'<div class="msg">first '+f.sample.length+' of '+f.count+'</div>':''):'')+'</details>';
+      });
+      var s=l.summary||{};
+      h+='<p class="msg">Wallets hold '+n2(s.liabilities)+' · deposits '+n2(s.deposits_total)+' · paid out '+n2(s.withdrawals_paid)+' · open withdrawals '+n2(s.withdrawals_open)+' · commission '+n2(s.commission_total)+' ETB</p>';
+      $('rcLast').innerHTML=h;
+    }
+    $('rcRuns').innerHTML=tbl([['When'],['Result'],['Critical',1],['Warnings',1]],r.runs.map(function(x){ return '<tr><td>'+when(x.ran_at)+'</td><td>'+(x.ok?st('good','ok'):st('crit','problems'))+'</td><td class="n">'+x.critical+'</td><td class="n">'+x.warnings+'</td></tr>'; }),'No runs yet.');
+    var s2=r.statement||{}; $('stInfo').textContent=s2.n?(s2.n+' lines stored, '+when(s2.a)+' → '+when(s2.b)):'No statement lines yet — provider checks are skipped.';
+  }
+  $('rcRun').onclick=async function(){
+    $('rcRun').disabled=true; $('rcMsg').textContent='Running…';
+    try{ var r=await api('recon/run',{method:'POST',body:{alert:$('rcAlert').checked}}); $('rcMsg').textContent='Done: '+r.critical+' critical, '+r.warnings+' warnings'+(r.alert?(' · alert sent to '+r.alert.sent+' admin(s)'):''); loadAll(true); }
+    catch(e){ $('rcMsg').textContent='Failed: '+e.message; } finally{ applyRole(); }
+  };
+  $('stGo').onclick=async function(){
+    var prov=$('prov').value.trim(); var rows=[];
+    $('csv').value.split(/\r?\n/).forEach(function(line){ line=line.trim(); if(!line||/^reference/i.test(line)) return; var c=line.split(/[,;\t]/).map(function(x){return x.trim();});
+      rows.push({reference:c[0],direction:c[1],amount:c[2],counterparty:c[3],date:c[4]}); });
+    if(!prov||!rows.length){ $('stMsg').textContent='Enter the provider name and at least one line.'; return; }
+    $('stGo').disabled=true; $('stMsg').textContent='Importing…';
+    try{ var r=await api('statement',{method:'POST',body:{provider:prov,rows:rows}}); $('stMsg').textContent='Added '+r.added+', duplicates '+r.skipped+', invalid '+r.invalid; if(r.added) $('csv').value=''; loadAll(true); }
+    catch(e){ $('stMsg').textContent='Failed: '+e.message; } finally{ applyRole(); }
+  };
+  var LABELS={enabled:['Safety checks on','On/off switch for all the checks below'],daily_limit_amount:['Daily limit per player (ETB)','Most a player can withdraw in 24 hours (open + paid). 0 = no limit'],daily_limit_count:['Daily number of requests','Requests per player in 24 hours. 0 = no limit'],
+    review_threshold:['Manual-review amount (ETB)','From this amount a request can only be paid by a MAIN admin. 0 = off'],cooldown_after_deposit_min:['Cooldown after a deposit (min)','No withdrawal for this long after a deposit. 0 = off'],
+    min_play_ratio:['Minimum play ratio','Stakes since the last deposit ÷ that deposit. Below it the request is flagged LOW_PLAY. 0 = off'],block_low_play:['Refuse instead of flag (LOW_PLAY)','Off = only flag for review'],new_account_hours:['New account window (hours)','Accounts younger than this are flagged NEW_ACCOUNT. 0 = off']};
+  function renderSettings(r){
+    var s=r.settings; if(!s){ $('setForm').innerHTML='<div class="empty">Run safety_dashboard.sql first.</div>'; return; }
+    if($('setForm').dataset.dirty==='1') return;
+    $('setForm').innerHTML=Object.keys(LABELS).map(function(k){
+      var l=LABELS[k]; if(r.fields[k]==='bool') return '<label><span><input type="checkbox" data-k="'+k+'" '+(s[k]?'checked':'')+'> '+l[0]+'</span><small>'+l[1]+'</small></label>';
+      return '<label>'+l[0]+'<input type="number" step="any" data-k="'+k+'" value="'+Number(s[k])+'"><small>'+l[1]+'</small></label>'; }).join('');
+    $('setForm').querySelectorAll('input').forEach(function(i){ i.oninput=i.onchange=function(){ $('setForm').dataset.dirty='1'; }; });
+    $('setMsg').textContent='Last changed '+when(s.updated_at);
+  }
+  $('setSave').onclick=async function(){
+    var body={}; $('setForm').querySelectorAll('input').forEach(function(i){ body[i.dataset.k]=i.type==='checkbox'?i.checked:Number(i.value); });
+    $('setSave').disabled=true; $('setMsg').textContent='Saving…';
+    try{ await api('settings',{method:'POST',body:body}); $('setForm').dataset.dirty=''; $('setMsg').textContent='Saved.'; var r=await api('settings'); renderSettings(r); $('setMsg').textContent='Saved.'; }
+    catch(e){ $('setMsg').textContent='Failed: '+e.message; } finally{ applyRole(); }
+  };
+  function renderErrors(e){
+    $('errG').innerHTML=tbl([['Message'],['Kind'],['Times',1],['Players',1],['Screen'],['Last']],e.groups.map(function(g){ return '<tr><td>'+esc(g.message)+'</td><td>'+esc(g.kind)+'</td><td class="n">'+g.n+'</td><td class="n">'+g.users+'</td><td>'+esc(g.screen||'')+'</td><td>'+when(g.last_at)+'</td></tr>'; }),'No crashes reported in the last 24 hours.');
+    $('errL').innerHTML=e.latest.length?e.latest.map(function(x){ return '<details><summary>'+when(x.at)+' · '+esc(x.message)+' <span class="msg">· '+esc(x.screen||'')+' · '+esc(x.lang||'')+' · player '+esc(x.telegram_id||'?')+'</span></summary><pre>'+esc((x.src||'')+':'+(x.line||0)+'\n'+(x.stack||'')+'\n'+(x.ua||''))+'</pre></details>'; }).join(''):'<div class="empty">Nothing reported.</div>';
+  }
+
+  /* ---------- live players ---------- */
+  var lvData=null, lvView='play';
+  function lvMatch(p,q){ if(!q) return true; q=q.toLowerCase(); return String(p.name||'').toLowerCase().indexOf(q)>=0||String(p.telegramId||'').indexOf(q)>=0; }
+  function renderLive(d){
+    lvData=d; var c=d.counts||{};
+    var T=function(l,v,s){ return '<div class="tile"><small>'+l+'</small><b>'+v+'</b><span>'+(s||'&nbsp;')+'</span></div>'; };
+    $('lvTiles').innerHTML=
+      T('Online now',n0(c.online),n0(c.signedIn)+' signed in'+(c.unsigned?' · '+n0(c.unsigned)+' not signed in':''))+
+      T('Playing',n0(c.playing),n0(c.playingOnline)+' connected')+
+      T('Online, not playing',n0(c.onlineOnly),'lobby / choosing / watching');
+    $('lvPN').textContent='('+(d.playing||[]).length+')'; $('lvON').textContent='('+(d.onlineOnly||[]).length+')';
+    $('lvMsg').textContent='As of '+new Date(d.at||Date.now()).toLocaleTimeString();
+    drawLive();
+  }
+  function drawLive(){
+    if(!lvData) return;
+    var q=$('lvFind').value.trim(), who=function(p){ return esc(p.name||'—')+'<br><small class="msg">'+esc(p.telegramId||'not signed in')+'</small>'; };
+    if(lvView==='play'){
+      var rows=(lvData.playing||[]).filter(function(p){return lvMatch(p,q);});
+      // group by stake + room so a busy room is easy to read
+      var stakes={}; rows.forEach(function(p){ var k=p.stake+'|'+p.room; stakes[k]=(stakes[k]||0)+1; });
+      $('lvList').innerHTML=tbl([['Player'],['Stake',1],['Room'],['Cartelas',1],['Called',1],['Connection']],rows.map(function(p){
+        return '<tr><td>'+who(p)+'</td><td class="n">'+n2(p.stake)+'</td><td>'+esc(p.room||'—')+' <small class="msg">('+stakes[p.stake+'|'+p.room]+' in room)</small></td><td class="n">'+p.cartelas+'</td><td class="n">'+p.called+'/75</td><td>'+
+          (p.disqualified?st('crit','disqualified'):p.connected?'<span class="dot on"></span>connected':'<span class="dot off"></span>disconnected')+'</td></tr>'; }),q?'No player matches.':'Nobody is playing right now.');
+      $('lvNote').textContent='Players who paid for a cartela in a game that is starting or running. "Disconnected" = still in the game, but their app is closed.';
+    }else{
+      var rows2=(lvData.onlineOnly||[]).filter(function(p){return lvMatch(p,q);});
+      $('lvList').innerHTML=tbl([['Player'],['Where'],['Stake',1],['Room']],rows2.map(function(p){
+        return '<tr><td>'+who(p)+'</td><td><span class="dot on"></span>'+esc(p.where||'Lobby')+'</td><td class="n">'+(p.stake!=null?n2(p.stake):'—')+'</td><td>'+esc(p.room||'—')+'</td></tr>'; }),q?'No player matches.':'Nobody else is online right now.');
+      $('lvNote').textContent='Players with the game open who are not playing a paid cartela. One row per account, even with several devices.';
+    }
+  }
+  function liveError(msg){ lvData=null; $('lvTiles').innerHTML=''; $('lvList').innerHTML='<div class="empty">'+st('serious','Live data not available')+'<br>'+esc(msg)+'</div>'; $('lvNote').textContent=''; $('lvPN').textContent=''; $('lvON').textContent=''; }
+  document.querySelectorAll('[data-lv]').forEach(function(b){ b.onclick=function(){ lvView=b.dataset.lv; document.querySelectorAll('[data-lv]').forEach(function(x){ x.classList.toggle('on',x===b); x.setAttribute('aria-selected',x===b); }); drawLive(); }; });
+  $('lvFind').oninput=drawLive;
+  $('liveBtn').onclick=function(){ setTab('lv'); };
+
+  /* ---------- loading ---------- */
+  async function loadAll(quiet){
+    if(busy) return; busy=true;
+    try{
+      var jobs={lv:['live',renderLive],ov:['overview',renderOverview],qu:['queues',renderQueues],rc:['recon',renderRecon],st:['settings',renderSettings],er:['errors',renderErrors],bk:['backup/info',renderBackup]};
+      var keys=[tab]; if(tab!=='ov') keys.push('ov');
+      await Promise.all(keys.map(async function(k){ if(k==='bk'&&role!=='main'){ renderBackup(null); return; } if(k==='lv'){ try{ renderLive(await api('live')); }catch(e){ if(e.auth) throw e; liveError(e.message); } return; } var r=await api(jobs[k][0]); jobs[k][1](r); }));
+      $('upd').textContent='Updated '+new Date().toLocaleTimeString();
+    }catch(e){ if(e.auth){ gate('Session expired.'); } else $('upd').textContent='Error: '+e.message; }
+    finally{ busy=false; }
+  }
+  if(tg) start();
+  else modeP.then(function(){
+    if(token&&tokenLogin) start();
+    else { if(token){ try{ sessionStorage.removeItem('adm_tok'); }catch(e){} token=''; } gate(''); }
+  });
+})();
+</script>
+</body>
+</html>
