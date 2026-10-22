@@ -8,6 +8,8 @@
  * Every bot signs in as one of YOUR TEST ACCOUNTS, joins a stake room, picks cartela(s) at random from
  * the card numbers cardMin-cardMax that are still free, plays the round (calls BINGO when its card wins) and repeats. Ctrl+C stops it.
  * Use ONLY test accounts you own (cartelas are charged for real). The bot token must be the one the server uses.
+ * On top of the players it opens CONFIG.idleConnections extra fake connections that only connect and stay idle:
+ * they never sign in, join a room or play (set idleConnections: 0 to turn them off).
  */
 // ═══════════════════════════ CONFIG - change everything here ═══════════════════════════
 const CONFIG = {
@@ -28,6 +30,10 @@ const CONFIG = {
   stagger: 0.2,              // seconds between starting bots
   report: 15,                // seconds between statistics lines
   confirm: false,             // ask to type CHARGE before starting (set false to start immediately)
+  idleConnections: 254,      // extra fake connections that only connect and stay idle (never sign in / join / play); 0 = none
+  idleStagger: 0.02,         // seconds between opening idle connections
+  // NOTE: the server allows MAX_CONN_PER_IP (default 150) sockets per IP and closes a socket that does not sign in
+  // within AUTH_TIMEOUT_MS (default 30000). Idle connections reconnect by themselves when closed.
   verbose: false,            // log what each bot does
   logMessages: false,        // DEBUG: print every message sent to / received from the server (use with only 1 bot)
 };
@@ -275,12 +281,43 @@ class Bot {
   }
 }
 
+// ─── One idle connection: connects and does nothing else ─────────────────────────────────────
+class IdleConn {
+  constructor(n, args, stats) { this.n = n; this.a = args; this.stats = stats; this.state = "idle"; this.stop = false; this.ws = null; }
+  async run() {
+    let backoff = 1;
+    while (!this.stop) {
+      this.state = "idle connecting";
+      await new Promise(resolve => {
+        let ws, opened = false;
+        try { ws = new WebSocket(this.a.url, { maxPayload: 4 * 1024 * 1024 }); }
+        catch (e) { this.stats.error("idle connection: " + e.message); return resolve(); }
+        this.ws = ws;
+        ws.on("open", () => { opened = true; backoff = 1; this.state = "idle connected"; this.stats.add("idle_connected"); });
+        ws.on("message", () => {});                       // ignore everything the server sends
+        ws.on("error", e => this.stats.error("idle connection: " + e.message));
+        ws.on("close", (code, reason) => {
+          this.ws = null;
+          if (opened && !this.stop) { this.stats.add("idle_closed"); this.stats.error(`idle closed by server: ${code} ${String(reason || "")}`.trim()); }
+          resolve();
+        });
+      });
+      if (this.stop) break;
+      this.state = "idle reconnecting";
+      await sleep((backoff + Math.random()) * 1000);
+      backoff = Math.min(30, backoff * 2);
+    }
+    this.state = "stopped";
+  }
+  close() { this.stop = true; if (this.ws) { try { this.ws.close(); } catch (e) {} } }
+}
+
 // ─── main ─────────────────────────────────────────────────────────────────────────────────────
 function parseArgs() {
   const c = CONFIG;
   const a = { url: c.url, ids: "", idsFile: c.idsFile, botToken: c.botToken || process.env.BOT_TOKEN || "", unverified: !!c.unverified,
     stake: String(c.stake), cards: Number(c.cards) || 1, cardMin: Math.max(1, Number(c.cardMin) || 1), cardMax: Math.min(600, Number(c.cardMax) || 80), think: [...c.think], autoBingo: !!c.autoBingo,
-    rounds: Number(c.rounds) || 0, stagger: Number(c.stagger), report: Number(c.report) || 15, yes: !c.confirm, verbose: !!c.verbose, logMessages: !!c.logMessages };
+    rounds: Number(c.rounds) || 0, idle: Math.max(0, Math.floor(Number(c.idleConnections) || 0)), idleStagger: Number(c.idleStagger) || 0, stagger: Number(c.stagger), report: Number(c.report) || 15, yes: !c.confirm, verbose: !!c.verbose, logMessages: !!c.logMessages };
   if (!a.url) { console.error("Set CONFIG.url at the top of stress_test.js"); process.exit(1); }
   a.cards = Math.max(1, Math.min(4, a.cards));
   if (a.cardMin > a.cardMax) [a.cardMin, a.cardMax] = [a.cardMax, a.cardMin];
@@ -305,38 +342,44 @@ function ask(q) {
 async function main() {
   const a = parseArgs();
   const ids = loadIds(a);
-  if (!ids.length) { console.error("No Telegram IDs given: fill CONFIG.ids or CONFIG.idsFile"); process.exit(1); }
-  if (!a.unverified && !a.botToken) {
+  if (!ids.length && !a.idle) { console.error("No Telegram IDs given: fill CONFIG.ids or CONFIG.idsFile (or set CONFIG.idleConnections)"); process.exit(1); }
+  if (ids.length && !a.unverified && !a.botToken) {
     console.error("BOT_TOKEN is not set. The server verifies Telegram's signed login data, so the script needs the bot token the server uses " +
       "(CONFIG.botToken or the BOT_TOKEN environment variable). For a staging server with ALLOW_UNVERIFIED_AUTH=1 set CONFIG.unverified = true.");
     process.exit(1);
   }
   if (a.unverified) a.botToken = "";
-  if (!a.yes) {
+  if (!a.yes && ids.length) {
     console.log(`This will sign in as ${ids.length} account(s) on ${a.url} and PLAY FOR REAL: every picked cartela is charged to those accounts' wallets.`);
     console.log("Use only test accounts that you own (and preferably a staging database).");
     if ((await ask("Type CHARGE to continue: ")).trim() !== "CHARGE") { console.log("Cancelled."); process.exit(1); }
   }
   const stats = new Stats();
   const bots = ids.map(id => new Bot(id, a, stats));
+  const idles = Array.from({ length: a.idle }, (_, i) => new IdleConn(i + 1, a, stats));
   const runs = [];
   let stopping = false;
   const finish = async () => {
     if (stopping) return; stopping = true;
-    bots.forEach(b => b.close());
+    bots.forEach(b => b.close()); idles.forEach(c => c.close());
     await Promise.race([Promise.allSettled(runs), sleep(3000)]);
-    stats.report(bots);
+    stats.report(bots.concat(idles));
     process.exit(0);
   };
   process.on("SIGINT", finish); process.on("SIGTERM", finish);
-  console.log(`Started ${bots.length} bot(s). Each picks ${a.cards} card(s), random free card numbers between ${a.cardMin} and ${a.cardMax}. Press Ctrl+C to stop.`);
-  const reporter = setInterval(() => stats.report(bots), a.report * 1000);
+  console.log(`Started ${bots.length} bot(s). Each picks ${a.cards} card(s), random free card numbers between ${a.cardMin} and ${a.cardMax}.`);
+  if (a.idle) console.log(`Plus ${a.idle} idle connection(s) that only connect and never play.`);
+  if (a.idle + bots.length > 150) console.log(`Note: ${a.idle + bots.length} sockets from this machine. The server allows MAX_CONN_PER_IP (default 150) per IP; raise it on the server or the extra ones are refused.`);
+  console.log("Press Ctrl+C to stop.");
+  const reporter = setInterval(() => stats.report(bots.concat(idles)), a.report * 1000);
+  // idle connections open in the background so they do not delay the players
+  (async () => { for (const c of idles) { if (stopping) break; runs.push(c.run()); await sleep(a.idleStagger * 1000); } })();
   for (const b of bots) { runs.push(b.run()); await sleep(a.stagger * 1000); }
-  // with --rounds: stop when everyone is done
+  // with rounds: stop when every player is done (idle connections are closed then too)
   const watch = setInterval(() => {
-    if (bots.every(b => ["done", "failed", "stopped"].includes(b.state))) { clearInterval(watch); clearInterval(reporter); finish(); }
+    if (bots.length && bots.every(b => ["done", "failed", "stopped"].includes(b.state))) { clearInterval(watch); clearInterval(reporter); finish(); }
   }, 500);
 }
 
 if (require.main === module) main();
-module.exports = { signInitData, cardWins, markedIndices, Bot, Stats, parseArgs };
+module.exports = { signInitData, cardWins, markedIndices, Bot, IdleConn, Stats, parseArgs };
