@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 /**
- * Beteseb Bingo Plus stress test (Node.js)  -  NO command-line arguments: edit the CONFIG block below.
+ * Mesob Bingo stress test (Node.js)  -  NO command-line arguments: edit the CONFIG block below.
  *
  *   npm install ws
+ *   set the BOT_TOKEN environment variable (the token the server uses), then:
  *   node stress_test.js
+ *     Windows cmd:         set BOT_TOKEN=123456:ABC...   then  node stress_test.js
+ *     Windows PowerShell:  $env:BOT_TOKEN="123456:ABC..." then  node stress_test.js
+ *     macOS / Linux:       BOT_TOKEN=123456:ABC... node stress_test.js
  *
  * Every bot signs in as one of YOUR TEST ACCOUNTS, joins a stake room, picks cartela(s) at random from
  * the card numbers cardMin-cardMax that are still free, plays the round (calls BINGO when its card wins) and repeats. Ctrl+C stops it.
@@ -14,7 +18,7 @@
 // ═══════════════════════════ CONFIG - change everything here ═══════════════════════════
 const CONFIG = {
   url: "wss://game-server-go-three-production.up.railway.app", // game server WebSocket address
-  botToken: "8731376218:AAHzx_DP2_VlJHqldWAUyf7VTq6CS-sEzr8",              // bot token the server uses (or leave "" and set the BOT_TOKEN environment variable)
+  botToken: process.env.BOT_TOKEN || "",  // read from the BOT_TOKEN environment variable - never write the token in this file
   unverified: false,         // true = send only the Telegram ID (server needs ALLOW_UNVERIFIED_AUTH=1; staging only)
 
   ids: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20], // Telegram IDs of the test accounts
@@ -315,7 +319,7 @@ class IdleConn {
 // ─── main ─────────────────────────────────────────────────────────────────────────────────────
 function parseArgs() {
   const c = CONFIG;
-  const a = { url: c.url, ids: "", idsFile: c.idsFile, botToken: c.botToken || process.env.BOT_TOKEN || "", unverified: !!c.unverified,
+  const a = { url: c.url, ids: "", idsFile: c.idsFile, botToken: String(c.botToken || "").trim(), unverified: !!c.unverified,
     stake: String(c.stake), cards: Number(c.cards) || 1, cardMin: Math.max(1, Number(c.cardMin) || 1), cardMax: Math.min(600, Number(c.cardMax) || 80), think: [...c.think], autoBingo: !!c.autoBingo,
     rounds: Number(c.rounds) || 0, idle: Math.max(0, Math.floor(Number(c.idleConnections) || 0)), idleStagger: Number(c.idleStagger) || 0, stagger: Number(c.stagger), report: Number(c.report) || 15, yes: !c.confirm, verbose: !!c.verbose, logMessages: !!c.logMessages };
   if (!a.url) { console.error("Set CONFIG.url at the top of stress_test.js"); process.exit(1); }
@@ -345,7 +349,7 @@ async function main() {
   if (!ids.length && !a.idle) { console.error("No Telegram IDs given: fill CONFIG.ids or CONFIG.idsFile (or set CONFIG.idleConnections)"); process.exit(1); }
   if (ids.length && !a.unverified && !a.botToken) {
     console.error("BOT_TOKEN is not set. The server verifies Telegram's signed login data, so the script needs the bot token the server uses " +
-      "(CONFIG.botToken or the BOT_TOKEN environment variable). For a staging server with ALLOW_UNVERIFIED_AUTH=1 set CONFIG.unverified = true.");
+      "(set the BOT_TOKEN environment variable, e.g. Windows cmd: set BOT_TOKEN=123456:ABC... ). For a staging server with ALLOW_UNVERIFIED_AUTH=1 set CONFIG.unverified = true.");
     process.exit(1);
   }
   if (a.unverified) a.botToken = "";
