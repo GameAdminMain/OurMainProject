@@ -5,7 +5,7 @@
  * otherwise up to 8 deposits whose reference contains the text are listed as buttons. Texts follow the admin's language (English / Amharic).
  *
  * Used from api/bot.js:
- *   const refLookup = require("../ref_lookup")({ bot, db, getCurrentAdmin, getLang, respond, answerCallback, clearPendingState });
+ *   const refLookup = require("../ref_lookup")({ bot, db, getCurrentAdmin, getLang, respond, answerCallback, clearPendingState, denyAccess });
  *   refLookup.textHook(ctx, telegramId, text)   inside the single message:text handler
  *   refLookup.clear(telegramId)                 inside clearPendingState()
  */
@@ -80,7 +80,7 @@ function cleanRef(text) {
   return String(text || "").replace(/\s+/g, "").replace(/[.,;:]+$/, "").slice(0, 100);
 }
 
-module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, respond, answerCallback, clearPendingState }) {
+module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, respond, answerCallback, clearPendingState, denyAccess }) {
   const pendingAsk = new Map();   // admin telegramId -> expiry (ms)
 
   async function mainAdmin(ctx) {
@@ -238,7 +238,7 @@ module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, re
   // 🧾 Receipt lookup button, and the buttons of a partial-match list
   bot.callbackQuery(/^admin_rcpt(?:_(\d+))?$/, async (ctx) => {
     if (!(await mainAdmin(ctx))) {
-      try { await ctx.answerCallbackQuery({ text: "❌ You do not have permission for this.", show_alert: true }); } catch (_) {}
+      await denyAccess(ctx);   // the shared ⛔ pop-up from api/bot.js
       return;
     }
     await answerCallback(ctx);
@@ -266,7 +266,7 @@ module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, re
       pendingAsk.delete(telegramId);
       return false;
     }
-    if (!(await mainAdmin(ctx))) { pendingAsk.delete(telegramId); return false; }
+    if (!(await mainAdmin(ctx))) { pendingAsk.delete(telegramId); await denyAccess(ctx); return true; }
     // found -> done; not found -> keep waiting so the admin can simply send another number
     if (await lookup(ctx, text)) pendingAsk.delete(telegramId);
     else pendingAsk.set(telegramId, Date.now() + ASK_MINUTES * 60 * 1000);

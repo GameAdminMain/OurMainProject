@@ -415,7 +415,28 @@ bot.use(async (ctx, next) => {
 // Every button that belongs to the admin area is checked against the database BEFORE its handler runs, so a handler
 // that forgets its own check (or a forged / replayed callback_data) can never be used by a normal user.
 // The role rules inside each handler (main / withdrawal / broadcast / statistics) still apply on top of this.
-const ADMIN_CALLBACK_RE = /^(admin_|approve_withdrawal_|reject_withdrawal_|remove_admin_|set_admin_|broadcast_)/;
+const ADMIN_CALLBACK_RE = /^(admin_|fr_|approve_withdrawal_|reject_withdrawal_|remove_admin_|set_admin_|broadcast_)/;
+
+// Telegram takes only ONE answer per button press. Many admin handlers answer first (a plain "got it") and check the
+// role afterwards, which left no way to show the ⛔ pop-up. So on admin buttons the plain answer waits a moment (or until
+// the handler ends); a pop-up sent in the meantime (denyAccess) replaces it.
+const CB_PLAIN_ACK_DELAY_MS = 1500;
+bot.use(async (ctx, next) => {
+  const data = ctx.callbackQuery?.data;
+  if (typeof data !== "string" || !ADMIN_CALLBACK_RE.test(data)) return next();
+  const send = ctx.answerCallbackQuery.bind(ctx);
+  let answered = false, timer = null;
+  const flush = () => { clearTimeout(timer); if (answered) return; answered = true; send().catch(() => {}); };
+  ctx.answerCallbackQuery = (...args) => {
+    if (answered) return Promise.resolve(true);
+    if (!args.length || args[0] == null) { if (!timer) timer = setTimeout(flush, CB_PLAIN_ACK_DELAY_MS); return Promise.resolve(true); }
+    clearTimeout(timer); answered = true;
+    return send(...args);
+  };
+  ctx.cbAnswered = () => answered;
+  try { return await next(); } finally { flush(); }
+});
+
 bot.use(async (ctx, next) => {
   const data = ctx.callbackQuery?.data;
   if (typeof data !== "string" || !ADMIN_CALLBACK_RE.test(data)) return next();
@@ -424,7 +445,7 @@ bot.use(async (ctx, next) => {
   catch (err) { console.error("Admin gate lookup error:", err); }
   if (!admin) {
     console.warn(`[security] non-admin ${ctx.from?.id} pressed admin button "${data.slice(0, 40)}"`);
-    try { await ctx.answerCallbackQuery({ text: "❌ Unauthorized", show_alert: true }); } catch (_) {}
+    await denyAccess(ctx);
     return;
   }
   return next();
@@ -732,30 +753,36 @@ async function getCurrentAdmin(ctx)
   }
 }
 
+// ONE text for every "not allowed" case (not an admin, admin switched off, wrong admin role), in the user's language.
+// A button press gets it as a pop-up box; typed commands / text answers get it as a message.
+if (!I18N.not_authorized) I18N.not_authorized = {
+  en: "⛔ You are not authorized to do this.",
+  am: "⛔ ይህንን ለማድረግ ፈቃድ የለዎትም።"
+};
+
+async function denyAccess(ctx) {
+  let lang = "am";
+  try { if (ctx?.from?.id) lang = await getLang(ctx.from.id); } catch (_) {}
+  const text = tr(lang, "not_authorized");
+  if (ctx?.callbackQuery && !(ctx.cbAnswered && ctx.cbAnswered())) {
+    try { await ctx.answerCallbackQuery({ text, show_alert: true }); return null; } catch (_) {}
+  }
+  try { await respond("reply", ctx, text); } catch (_) {}
+  return null;
+}
+
 async function getCurrentAdminPermission(ctx, permission) 
 {
     const admin = await getCurrentAdmin(ctx);
     if (!admin) 
     {
-        try {
-              await ctx.answerCallbackQuery({text: "❌ Unauthorized", show_alert: true});
-            } 
-        catch (err) 
-        {          
-        }
-        return null;
+        return denyAccess(ctx);
     }
     const role = admin.admin_role;
     const allowed =  role === "main" ||   (role === "broadcast" &&  permission === "broadcast") || (role === "statistics" && permission === "statistics") || (role === "withdrawal" &&    permission === "withdrawals") || (role === "deposit" && permission === "deposits");
     if (!allowed) 
     {
-        try {
-                await ctx.answerCallbackQuery({text: "❌ You do not have permission for this.", show_alert: true});
-            } 
-        catch (err) 
-        {          
-        }
-        return null;
+        return denyAccess(ctx);
     }
     return admin;
 }
@@ -1899,9 +1926,7 @@ bot.callbackQuery(
         !admin ||
         admin.admin_role !== "main"
       ) {
-        return respond("reply", ctx, 
-          "⛔ You are not authorized to manage admins."
-        );
+        return denyAccess(ctx);
       }
 
       pendingAdminRoleSearch.set(
@@ -2063,7 +2088,7 @@ async function bnShow(ctx, text, kb) {
 
 async function bnAdmin(ctx) {
   const admin = await frAdminOnly(ctx);
-  if (!admin) { try { await respond("reply", ctx, "⛔ You are not authorized."); } catch (_) {} }
+  if (!admin) await denyAccess(ctx);
   return admin;
 }
 
@@ -2546,7 +2571,7 @@ bot.callbackQuery(/^fr_u_(\d+)$/, async (ctx) => {
   try {
     await ctx.answerCallbackQuery();
     const admin = await frAdminOnly(ctx);
-    if (!admin) return respond("reply", ctx, "⛔ You are not authorized.");
+    if (!admin) return denyAccess(ctx);
     const userId = Number(ctx.match[1]);
     const status = await db.getFinancialStatus(userId);
     if (!status?.target) return respond("reply", ctx, "❌ User not found.");
@@ -2561,7 +2586,7 @@ bot.callbackQuery(/^fr_u_(\d+)$/, async (ctx) => {
 
 async function frApplyUser(ctx, userId, action, blocked) {
   const admin = await frAdminOnly(ctx);
-  if (!admin) return respond("reply", ctx, "⛔ You are not authorized.");
+  if (!admin) return denyAccess(ctx);
   const result = await db.setUserFinancialRestriction(admin.id, userId, action, blocked, null);
   const v = frUserScreen(result.status, userId);
   try {
@@ -2610,7 +2635,7 @@ async function showFrSystem(ctx) {
 bot.callbackQuery("fr_s", async (ctx) => {
   try {
     await ctx.answerCallbackQuery();
-    if (!(await frAdminOnly(ctx))) return respond("reply", ctx, "⛔ You are not authorized.");
+    if (!(await frAdminOnly(ctx))) return denyAccess(ctx);
     await showFrSystem(ctx);
   } catch (err) {
     console.error("fr_s error:", err);
@@ -2623,7 +2648,7 @@ bot.callbackQuery(/^fr_st_(d|w|tm|tp|t|a)$/, async (ctx) => {
   try {
     await ctx.answerCallbackQuery();
     const admin = await frAdminOnly(ctx);
-    if (!admin) return respond("reply", ctx, "⛔ You are not authorized.");
+    if (!admin) return denyAccess(ctx);
     const code = ctx.match[1];
     // a single feature that is already paused is simply resumed
     if (FR_FEATURES[code]) {
@@ -2658,7 +2683,7 @@ bot.callbackQuery(/^fr_sy_(d|w|tm|tp|t|a)$/, async (ctx) => {
   try {
     await ctx.answerCallbackQuery();
     const admin = await frAdminOnly(ctx);
-    if (!admin) return respond("reply", ctx, "⛔ You are not authorized.");
+    if (!admin) return denyAccess(ctx);
     await db.setSystemFinancialFlag(admin.id, FR_ACTION_BY_CODE[ctx.match[1]], false, null);
     await showFrSystem(ctx);
   } catch (err) {
@@ -2671,7 +2696,7 @@ bot.callbackQuery(/^fr_sr_(t|a)$/, async (ctx) => {
   try {
     await ctx.answerCallbackQuery();
     const admin = await frAdminOnly(ctx);
-    if (!admin) return respond("reply", ctx, "⛔ You are not authorized.");
+    if (!admin) return denyAccess(ctx);
     await db.setSystemFinancialFlag(admin.id, FR_ACTION_BY_CODE[ctx.match[1]], true, null);
     await showFrSystem(ctx);
   } catch (err) {
@@ -2843,7 +2868,7 @@ async function adminUserBonusView(userId, page) {
 async function adminMainOnly(ctx) {
   const admin = await db.getAdminByTelegramId(ctx.from.id);
   if (!admin || admin.admin_role !== "main") {
-    await respond("reply", ctx, "⛔ You are not authorized.");
+    await denyAccess(ctx);
     return false;
   }
   return true;
@@ -2892,9 +2917,7 @@ bot.callbackQuery("admin_manage_user", async (ctx) => {
       admin.admin_role !== "main"
     ) {
 
-      return respond("reply", ctx, 
-        "⛔ You are not authorized to use this feature."
-      );
+      return denyAccess(ctx);
 
     }
 
@@ -2978,9 +3001,7 @@ bot.callbackQuery(
         admin.admin_role !== "main"
       ) {
 
-        return respond("reply", ctx, 
-          "⛔ You are not authorized."
-        );
+        return denyAccess(ctx);
 
       }
 
@@ -3071,10 +3092,7 @@ bot.callbackQuery(
         !admin ||
         admin.admin_role !== "main"
       ) {
-        return await ctx.answerCallbackQuery({
-          text: "❌ Unauthorized",
-          show_alert: true
-        });
+        return denyAccess(ctx);
       }
 
       const role =
@@ -3172,10 +3190,7 @@ bot.callbackQuery(
         !admin ||
         admin.admin_role !== "main"
       ) {
-        return await ctx.answerCallbackQuery({
-          text: "❌ Unauthorized",
-          show_alert: true
-        });
+        return denyAccess(ctx);
       }
 
       const userId =
@@ -3281,9 +3296,7 @@ bot.callbackQuery(
         admin.admin_role !== "main"
       ) {
 
-        return respond("reply", ctx, 
-          "⛔ You are not authorized."
-        );
+        return denyAccess(ctx);
 
       }
 
@@ -8220,7 +8233,7 @@ bot.callbackQuery("admin_home", async (ctx) => {
   const admin = await getCurrentAdmin(ctx);
     if (!admin) 
     {
-          return respond("edit", ctx, "❌ Unauthorized.");
+          return denyAccess(ctx);
     }
     try 
     {
@@ -9258,7 +9271,7 @@ bot.callbackQuery("admin_pending", async (ctx) => {
     return showPendingDeposits(ctx, true);
   }
   if (admin.admin_role !== "main") {
-    return ctx.answerCallbackQuery({ text: "❌ You do not have permission for this.", show_alert: true }).catch(() => {});
+    return denyAccess(ctx);
   }
   await answerCallback(ctx);
   try { await showPendingMenu(ctx, admin, true); }
@@ -9300,7 +9313,7 @@ async function showApprovalModes(ctx, edit = true) {
 bot.callbackQuery("admin_apm", async (ctx) => {
   const admin = await getCurrentAdmin(ctx);
   if (!admin || admin.admin_role !== "main") {
-    return ctx.answerCallbackQuery({ text: "❌ Only a main admin can change approval modes.", show_alert: true }).catch(() => {});
+    return denyAccess(ctx);
   }
   await answerCallback(ctx);
   await showApprovalModes(ctx, true);
@@ -9309,7 +9322,7 @@ bot.callbackQuery("admin_apm", async (ctx) => {
 bot.callbackQuery(/^admin_apm_(deposit|withdraw)_(auto|manual)$/, async (ctx) => {
   const admin = await getCurrentAdmin(ctx);
   if (!admin || admin.admin_role !== "main") {
-    return ctx.answerCallbackQuery({ text: "❌ Only a main admin can change approval modes.", show_alert: true }).catch(() => {});
+    return denyAccess(ctx);
   }
   const [, feature, mode] = ctx.match;
   try {
@@ -9527,7 +9540,7 @@ async function depositAmountTextHook(ctx, telegramId, text) {
 }
 
 // 🧾 Receipt lookup for the main admin: /ref <number> and the Home button (code in ref_lookup.js)
-const refLookup = require("../ref_lookup")({ bot, db, getCurrentAdmin, getLang, respond, answerCallback, clearPendingState });
+const refLookup = require("../ref_lookup")({ bot, db, getCurrentAdmin, getLang, respond, answerCallback, clearPendingState, denyAccess });
 
 // ============================================================
 // ALL TEXT INPUT — SINGLE HANDLER
@@ -10175,9 +10188,7 @@ bot.on(
             telegramId
           ];
 
-          return respond("reply", ctx, 
-            "❌ You are not authorized to edit payment accounts."
-          );
+          return denyAccess(ctx);
         }
 
         // ------------------------------------------------------
@@ -10465,9 +10476,7 @@ bot.on(
             telegramId
           ];
 
-          return respond("reply", ctx, 
-            "❌ You are not authorized to create payment accounts."
-          );
+          return denyAccess(ctx);
 
         }
 
@@ -10845,9 +10854,7 @@ bot.on(
             telegramId
           ];
 
-          return respond("reply", ctx, 
-            "❌ You are not authorized."
-          );
+          return denyAccess(ctx);
 
         }
 
@@ -11024,9 +11031,7 @@ bot.on(
             telegramId
           );
 
-          return respond("reply", ctx, 
-            "⛔ You are not authorized to manage users."
-          );
+          return denyAccess(ctx);
 
         }
 
@@ -11145,9 +11150,7 @@ bot.on(
               telegramId
             );
 
-            return respond("reply", ctx, 
-              "⛔ You are not authorized to manage admins."
-            );
+            return denyAccess(ctx);
 
           }
 
@@ -11385,9 +11388,7 @@ bot.on(
               telegramId
             );
 
-            return respond("reply", ctx, 
-              "⛔ You are not authorized to view statistics."
-            );
+            return denyAccess(ctx);
 
           }
 
@@ -12831,7 +12832,7 @@ bot.callbackQuery(/^admin_rl(?:_.*)?$/, async (ctx) => {
   try {
     await ctx.answerCallbackQuery();
     const admin = await frAdminOnly(ctx);
-    if (!admin) return respond("reply", ctx, "⛔ You are not authorized.");
+    if (!admin) return denyAccess(ctx);
     const p = ctx.callbackQuery.data.split("_").slice(2);    // after "admin","rl"
     const act = p[0] || "";
     const k = RL[p[1]] ? p[1] : null;
