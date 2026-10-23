@@ -270,8 +270,8 @@ app.get('/api/admin/mode',(req,res)=>{ res.setHeader('Cache-Control','no-store')
 app.get('/api/admin/whoami',adminRoute(false,async(req,res,who)=>res.json({role:who.role,via:who.via,tz:DASH_TZ})));
 
 app.get('/api/admin/overview',adminRoute(false,async(req,res)=>{
-  const {dep,wd,games,users,open,liab,series,errs}=await bingoDb.getDashboardOverview(DASH_TZ);
-  res.json({tz:DASH_TZ,today:{deposits:dep[0],withdrawalsPaid:wd[0],games:games[0],newUsers:users[0].n,netCash:Number(dep[0].sum)-Number(wd[0].sum)},open:open[0],liabilities:liab,series,errors24h:errs[0].n});
+  const [{dep,wd,games,users,open,liab,series,errs},userTotals]=await Promise.all([bingoDb.getDashboardOverview(DASH_TZ),bingoDb.getDashboardUserTotals()]);
+  res.json({tz:DASH_TZ,today:{deposits:dep[0],withdrawalsPaid:wd[0],games:games[0],newUsers:users[0].n,netCash:Number(dep[0].sum)-Number(wd[0].sum)},open:open[0],liabilities:liab,series,errors24h:errs[0].n,users:userTotals});
 }));
 
 app.get('/api/admin/queues',adminRoute(false,async(req,res)=>{

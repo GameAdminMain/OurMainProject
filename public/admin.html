@@ -101,6 +101,7 @@ input.find{background:#111;border:1px solid var(--line);border-radius:8px;paddin
 
 <section id="ov" class="on">
   <div class="attn" id="attn"></div>
+  <div class="grid tiles" id="uTiles"></div>
   <div class="grid tiles" id="tiles"></div>
   <div class="grid two">
     <div class="card"><h2>Deposits and withdrawals paid, last 14 days (ETB)</h2>
@@ -296,6 +297,12 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" -v ON_ERROR_STOP=1 -f bbpback
       T('Net cash today',n2(t.netCash)+' ETB','deposits − withdrawals')+
       T('Prizes paid today',n2(t.games.prizes)+' ETB','gross pot '+n2(t.games.gross))+
       T('New players today',n0(t.newUsers),t.games.cancelled+' games cancelled');
+    var u=o.users||{};
+    $('uTiles').innerHTML=
+      T('Registered users',n0(u.registered),'all accounts')+
+      T('Active users',n0(u.active),'can play (not blocked, not inactive)')+
+      T('Blocked users',n0(u.blocked),n0(u.inactive)+' inactive (watch only)')+
+      T('Played in last 7 days',n0(u.played7d),'joined at least one game');
     bars($('chCash'),o.series,[{k:'deposits',n:'Deposits',c:'#3987e5'},{k:'withdrawals',n:'Withdrawals paid',c:'#d95926'}]);
     bars($('chRev'),o.series,[{k:'commission',n:'Commission',c:'#199e70'}]);
     var tot=o.liabilities.reduce(function(a,b){return a+Number(b.sum);},0);

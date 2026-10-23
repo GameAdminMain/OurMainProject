@@ -7650,6 +7650,20 @@ async approveDeposit(receipt, telegramId) {
     return { dep, wd, games, users, open, liab, series, errs };
   },
 
+  // dashboard Overview: player totals from the users table
+  // active = is_active AND NOT is_blocked; blocked = is_blocked; inactive = not active and not blocked; played7d = joined a game in the last 7 days
+  async getDashboardUserTotals() {
+    const { rows } = await pool.query(`
+      SELECT COUNT(*)::int registered,
+             COUNT(*) FILTER (WHERE is_active AND NOT is_blocked)::int active,
+             COUNT(*) FILTER (WHERE is_blocked)::int blocked,
+             COUNT(*) FILTER (WHERE NOT is_active AND NOT is_blocked)::int inactive,
+             (SELECT COUNT(DISTINCT user_id)::int FROM bingo_participants
+               WHERE joined_at > now() - interval '7 days' AND status <> 'refunded') played7d
+      FROM users`);
+    return rows[0];
+  },
+
   // dashboard Queues tab: running games, open withdrawals / deposits, recently flagged withdrawals
   async getDashboardQueues() {
     await ensureApprovalSchema();
