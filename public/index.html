@@ -5276,6 +5276,14 @@ function navGo(screen, navId){
   }
 
 }
+// automatic moves (new round, board reset, rejoin) only happen while the player is looking at the game;
+// on Profile / Winners / Wallet / Lobby they stay put and the Game button brings them back
+let missedGameView=false;
+function gameViewOn(){ return ['screenCards','screenGame','screenLoading'].some(id=>document.getElementById(id)?.classList.contains('active')); }
+function autoNav(screen, navId, wanted){
+  if(wanted||openingRoom||restoringActiveGame||gameViewOn()){ missedGameView=false; navGo(screen,navId); return true; }
+  missedGameView=true; return false;
+}
 function saveActiveGameState(phase){
   if(myRoomId) localStorage.setItem('roomId',myRoomId);
   if(myStakeId) localStorage.setItem('stakeId',myStakeId);
@@ -5446,6 +5454,13 @@ function fillPlayLayoutForSpectator(msg,nums){
 function goToGame(){
   if(localStorage.getItem('gameViewDetached')==='1'){ navGo('screenLobby','navHome'); return; }   
   localStorage.removeItem('gameViewDetached');
+  if(missedGameView && myRoomId){
+    missedGameView=false;
+    navGo('screenCards','navGame');
+    if(activeGamePhase==='countdown') showSavedCountdown();
+    if(telegramId) wsSend({type:'reconnect',roomId:myRoomId,telegramId:telegramId});
+    return;
+  }
   restoreActiveGameState();
   let saved=null;
   try{ saved=JSON.parse(localStorage.getItem('activeGameState')||'null'); }catch(e){ saved=null; }
@@ -5552,6 +5567,7 @@ function gotoProfile(){
     if(saved&&saved.user&&String(saved.telegramId)===String(id)) renderUserProfile(saved.user,[]);
   }catch(e){}
   loadUserProfile(false).catch(()=>{});
+  openRecent(recentTab||'played');
 }
 
 function renderUserProfile(u, history=[]){
@@ -5590,7 +5606,7 @@ function renderUserProfile(u, history=[]){
   renderStakeTable(u?.stake_stats);
 }
 
-// Recent games (last 10 played / won): fetched only when a tab is tapped, one request for both lists, cached 60 s
+// Recent games (last 10 played / won): fetched when Profile opens, one request for both lists, cached 60 s (cleared when a game ends)
 let recentGames=null, recentAt=0, recentTab='', recentBusy=false;
 function renderRecent(){
   const box=document.getElementById('pfRRows'); if(!box) return;
@@ -5842,7 +5858,7 @@ function refreshCardsForNewRound(){
   autoClaimSent=false;
   resetSlotUI();
   hideWinnerOverlay();
-  navGo('screenCards','navCards');
+  autoNav('screenCards','navCards');
 
   const roomId=myRoomId || localStorage.getItem('roomId');
   const tid=telegramId || getTelegramId();
@@ -5897,7 +5913,7 @@ function finishPostGameReset(msg={}){
   activeGamePhase='none'; activeCountdownLeft=0;
   document.getElementById('cdCountdown').innerText=T('waitingPlayers');
 
-  navGo('screenCards','navCards');
+  autoNav('screenCards','navCards');
 
 }
 
@@ -6088,6 +6104,7 @@ function handle(msg){
 
     case 'postGameWait': {
       // We came back (verify link, screen off, lost connection) while the board is being reset: the server kept our seat.
+      const pgwWanted=openingRoom||restoringActiveGame;
       myRoomId=msg.roomId; myStakeId=msg.stakeId; postGameStake=msg.stakeId;
       try{ localStorage.setItem('roomId',msg.roomId); localStorage.setItem('stakeId',msg.stakeId); }catch(e){}
       restoringActiveGame=false; openingRoom=false; pendingStakeJoin=null;
@@ -6095,11 +6112,11 @@ function handle(msg){
       activeGamePhase='none'; activeCountdownLeft=0;
       setSpectatorMode(false);
       const g=document.getElementById('poolGrid'); if(g) g.innerHTML='';
-      navGo('screenCards','navCards');
+      const pgwShown=autoNav('screenCards','navCards',pgwWanted);
       startPostGameWait(msg.seconds);
       schedulePostGameAutoRefresh((Number(msg.seconds)||0)+3);     // safety net: ask again if 'backToCardSelection' never arrives
       // the round just ended: show its winner, same as the players who were in the game saw it
-      if(msg.result && (Number(msg.seconds)||0)>0){
+      if(pgwShown && msg.result && (Number(msg.seconds)||0)>0){
         try{ showWinnerOverlay(msg.result); updatePostGameCountdown(Number(msg.seconds)); }catch(e){}
       }
       break;
@@ -6130,7 +6147,8 @@ function handle(msg){
 
     case 'roomClosed': closeFinishedRoomLocally(msg.roomId); break;
 
-   case 'joinedRoom':
+   case 'joinedRoom': {
+      const jrWanted=openingRoom||restoringActiveGame;
       pendingStakeJoin=null; openingRoom=false; stopPostGameWait(); postGameStake=null;
       if(msg.status!=='playing') currentGameCode=null;
       if(restoreSelection){
@@ -6176,17 +6194,18 @@ function handle(msg){
       if(msg.status==='playing'){
         if(myCardId||myCardId2||myCardId3||myCardId4){
           activeGamePhase='playing'; saveActiveGameState('playing');
-          navGo('screenGame','navGame'); setSpectatorMode(false);
+          autoNav('screenGame','navGame',jrWanted); setSpectatorMode(false);
         }else{
           renderSpectatorView({playerCount:msg.playerCount||0,stakeAmount:msg.stakeAmount||0});
-          navGo('screenGame','navGame');
+          autoNav('screenGame','navGame',jrWanted);
         }
       } else {
-        navGo('screenCards','navCards');
+        autoNav('screenCards','navCards',jrWanted);
         if(msg._hasCards){ updateSlotUI(); renderSelectionCardsPreview(); }
         showSavedCountdown();
       }
       break;
+    }
 
     case 'cardPoolUpdate':
       cardPool=msg.pool; renderCardPool(msg.pool);
@@ -6351,6 +6370,7 @@ function handle(msg){
         localStorage.setItem('stakeId',msg.stakeId);
       }
       clearActiveGameState();
+      recentAt=0;                 // Profile > Recent games fetches again so this round shows up
       claimWindowOpen=false;
       autoClaimSent=true;
       // the big winner box belongs to the game screen: if the player already left to the lobby, show only a small banner
@@ -6392,7 +6412,7 @@ function handle(msg){
     case 'leftRoom': if(msg.roomId && myRoomId && String(msg.roomId)!==String(myRoomId)) break;
       stopPostGameWait(); postGameStake=null;
       restoreSelection=null;
-      clearSelectionCardsPreview(); clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[]; if(!document.getElementById('screenRooms')?.classList.contains('active')) navGo('screenLobby'); break;
+      clearSelectionCardsPreview(); clearActiveGameState(); localStorage.removeItem('roomId'); localStorage.removeItem('stakeId'); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; myCardNumbers3=[]; myCardNumbers4=[]; missedGameView=false; if(gameViewOn()) navGo('screenLobby'); break;
 
     case 'notification': showToast(msg.message, msg.message.startsWith('✅')?'':'error'); break;
 
