@@ -1143,7 +1143,8 @@ async function endGame(room, winners, customMsg, noWinner){
   const nrs=Number(stakeCfg&&stakeCfg.nextRoundSeconds);
   const RESET_SECONDS=Number.isFinite(nrs)&&nrs>=1?Math.min(300,Math.floor(nrs)):DEFAULT_NEXT_ROUND_SECONDS;
   room.resetAt=Date.now()+RESET_SECONDS*1000;      // a player who reconnects during the pause is told how long is left
-  broadcast(room,{
+  // Kept until the board resets, so a player who opens this stake during the pause still sees the winner.
+  room.lastGameOver={
     type:'gameOver',
     roomId:room.roomId,
     stakeId:room.stakeId,
@@ -1157,7 +1158,8 @@ async function endGame(room, winners, customMsg, noWinner){
     calledNumbers:room.calledNumbers,
     fairness:(room.fair&&room.dbGameId)?{commitment:room.fair.commitment,salt:room.fair.salt,order:room.fair.order}:undefined,   // revealed once the game is over
     resetCountdown:RESET_SECONDS
-  });
+  };
+  broadcast(room,room.lastGameOver);
 
   // Send a real 9 -> 8 -> ... -> 1 countdown. The room remains finished during
   // this period, then is reset to WAITING and the SAME room is reused.
@@ -1176,6 +1178,7 @@ async function endGame(room, winners, customMsg, noWinner){
     if(!rooms[room.roomId]) return;
 
     room.status='waiting';
+    room.lastGameOver=null;
     room.calledNumbers=[];
     room.availableNumbers=Array.from({length:75},(_,i)=>i+1);
     room.pot=0;
@@ -1235,6 +1238,14 @@ async function endGame(room, winners, customMsg, noWinner){
     broadcastLobby();
     // Do NOT start countdown here. Players must select fresh cards first.
   },RESET_SECONDS*1000);
+}
+
+// The pause after a round: seconds left before the board resets, plus the result of that round
+// (the same 'gameOver' message the players saw) so a late joiner sees the winner too.
+function postGameWaitMsg(room,client){
+  const seconds=Math.max(0,Math.ceil(((room.resetAt||Date.now())-Date.now())/1000));
+  return {type:'postGameWait',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,seconds,
+    result:room.lastGameOver?{...room.lastGameOver,resetCountdown:seconds}:undefined};
 }
 
 async function leaveRoom(client,roomId){
@@ -1434,8 +1445,7 @@ wss.on('connection',(ws,req)=>{
         }else if(room.status==='finished'){
           // The round is over and the board is being reset: keep this connection in the room so it receives
           // 'backToCardSelection', and tell the app how long the pause still lasts.
-          send(ws,{type:'postGameWait',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,
-            seconds:Math.max(0,Math.ceil(((room.resetAt||Date.now())-Date.now())/1000))});
+          send(ws,postGameWaitMsg(room,client));
         }else{
           // WAITING/COUNTDOWN room: show fresh card selection state.
           send(ws,{type:'joinedRoom',roomId:room.roomId,stakeId:room.stakeId,
@@ -1569,8 +1579,7 @@ wss.on('connection',(ws,req)=>{
                 if(ep){ attachSocket(ep,ws); ep.playerId=client.playerId; ep.detached=false; }
                 else room.players.push({playerId:client.playerId,playerName:client.playerName,telegramId:client.telegramId,userId:client.userId||userCache[String(client.telegramId)]?.userId||null,ws:makeMux([ws]),cardId:null,cardId2:null,cardId3:null,cardId4:null,hasPaid:false,disqualified:false});
                 client.roomId=room.roomId; client.rooms.add(room.roomId);
-                send(ws,{type:'postGameWait',roomId:room.roomId,stakeId:room.stakeId,balance:client.balance,
-                  seconds:Math.max(0,Math.ceil(((room.resetAt||Date.now())-Date.now())/1000))});
+                send(ws,postGameWaitMsg(room,client));
                 broadcastLobby();
                 break;
               }

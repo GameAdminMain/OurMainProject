@@ -6098,6 +6098,10 @@ function handle(msg){
       navGo('screenCards','navCards');
       startPostGameWait(msg.seconds);
       schedulePostGameAutoRefresh((Number(msg.seconds)||0)+3);     // safety net: ask again if 'backToCardSelection' never arrives
+      // the round just ended: show its winner, same as the players who were in the game saw it
+      if(msg.result && (Number(msg.seconds)||0)>0){
+        try{ showWinnerOverlay(msg.result); updatePostGameCountdown(Number(msg.seconds)); }catch(e){}
+      }
       break;
     }
 
