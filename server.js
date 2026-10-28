@@ -73,6 +73,9 @@ const server = http.createServer(app);
 const WS_MAX_PAYLOAD=16*1024;
 const MAX_CONN_PER_IP=Number(process.env.MAX_CONN_PER_IP)||150;
 const AUTH_TIMEOUT_MS=Number(process.env.AUTH_TIMEOUT_MS)||30000;
+// Open game connections allowed per Telegram account (default 1). A new sign-in wins: the oldest connection is closed
+// with "opened on another device", so a refresh or a reconnect never locks the player out.
+const MAX_CONN_PER_USER=Math.max(1,Math.floor(Number(process.env.MAX_CONN_PER_USER)||1));
 const connPerIp=new Map();
 function clientIp(req){
   const xff=String(req.headers['x-forwarded-for']||'').split(',').map(x=>x.trim()).filter(Boolean);
@@ -617,6 +620,24 @@ function relinkAllRooms(client,ws,tid){
       client.rooms.add(r.roomId);
     });
   });
+}
+// keep only the newest MAX_CONN_PER_USER signed-in connections of this account and close the others
+// Returns true when `client` itself was the one closed (an old connection signing in again while a newer one is open).
+function closeOlderSessions(client){
+  const tid=String(client.telegramId||''); if(!tid) return false;
+  const mine=Object.values(clients)
+    .filter(o=>!o.replaced&&String(o.telegramId||'')===tid&&o.ws&&o.ws.readyState===WebSocket.OPEN)
+    .sort((a,b)=>(b.authAt||0)-(a.authAt||0));               // newest first
+  const drop=mine.slice(MAX_CONN_PER_USER);
+  drop.forEach(o=>{
+    o.replaced=true;
+    const w=o.ws;
+    console.warn(`[session] ${tid} is open on another connection: closing an older one`);
+    send(w,{type:'sessionReplaced'});
+    try{ w.close(4004,'opened on another device'); }catch(e){}
+    setTimeout(()=>{ try{ if(w.readyState!==WebSocket.CLOSED) w.terminate(); }catch(e){} },5000);
+  });
+  return drop.includes(client);
 }
 const broadcast=(room,msg)=>{const s=JSON.stringify({roomId:room.roomId,stakeId:room.stakeId,gameId:room.dbGameCode||undefined,...(COMMIT_TYPES.has(msg.type)&&room.fair?{commitment:room.fair.commitment}:{}),...(COMMIT_TYPES.has(msg.type)&&room.commissionRate!=null?{commissionRate:room.commissionRate}:{}),...msg});room.players.forEach(p=>{if(p.ws&&p.ws.readyState===WebSocket.OPEN)p.ws.send(s);});};
 // Lobby payload: one entry per stake (amount); a stake with several rooms lists them in `rooms`.
@@ -1306,6 +1327,7 @@ wss.on('connection',(ws,req)=>{
           const client=clients[ws._pid];
 
           if(!client) return;
+          if(client.replaced) return;   // this connection was replaced by a newer one of the same account
 
 
           // ── Rate limiting: max 15 messages/sec per connection ──
@@ -1369,6 +1391,10 @@ wss.on('connection',(ws,req)=>{
                 client.telegramId=tid;
                 applyUserToClient(client,user);
                 client.playerName=user.name||client.playerName||'Player';
+                if(!client.authAt) client.authAt=Date.now();
+                // one person = MAX_CONN_PER_USER connections: the older ones are closed (their 'close' runs later,
+                // when this connection already holds the player's seat and cartelas, so nothing is released)
+                if(closeOlderSessions(client)) break;
                 relinkAllRooms(client,ws,tid);
                 broadcastLobby();            // tell the lobby which stakes this player is already in   // keep receiving every game this account is playing
                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true,inactive:client.inactive===true});

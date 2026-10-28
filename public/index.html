@@ -3247,28 +3247,28 @@ html body > .bottom-nav:not(#navX) .nav-icon{width:22px!important;height:22px!im
 html body > .bottom-nav:not(#navX) .nav-svg svg{width:20px!important;height:20px!important}
 
 /* ===== mesob-not-registered ===== */
-#nrScreen{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px 16px;box-sizing:border-box;overflow:auto;
+#nrScreen,#srScreen{position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:20px 16px;box-sizing:border-box;overflow:auto;
   background:radial-gradient(120% 46% at 12% 0%,rgba(112,38,196,.95) 0%,rgba(112,38,196,0) 70%),radial-gradient(90% 34% at 55% 100%,rgba(92,36,160,.55) 0%,rgba(92,36,160,0) 72%),linear-gradient(180deg,#1a1d38 0%,#141a30 55%,#10152a 100%)}
-#nrScreen[hidden]{display:none}
-#nrScreen .nr-card{width:100%;max-width:380px;text-align:center;color:#fff;font-family:Inter,system-ui,sans-serif;
+#nrScreen[hidden],#srScreen[hidden]{display:none}
+#nrScreen .nr-card,#srScreen .nr-card{width:100%;max-width:380px;text-align:center;color:#fff;font-family:Inter,system-ui,sans-serif;
   background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03));border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:26px 20px 20px;
   box-shadow:0 18px 50px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.12)}
-#nrScreen .nr-ico{width:78px;height:78px;margin:0 auto 14px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+#nrScreen .nr-ico,#srScreen .nr-ico{width:78px;height:78px;margin:0 auto 14px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   background:radial-gradient(circle at 35% 28%,#4a24a0,#2a1260 60%,#170a3a);border:3px solid #8fe6ff;box-shadow:0 0 26px rgba(139,92,246,.55),0 8px 18px rgba(0,0,0,.4)}
-#nrScreen .nr-ico svg{width:38px;height:38px;fill:none;stroke:#facc15;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-#nrScreen h2{margin:0 0 8px;font-size:21px;font-weight:800;letter-spacing:-.2px}
-#nrScreen .nr-text{margin:0 0 14px;font-size:14px;line-height:1.45;color:#d9d2f5}
-#nrScreen ol{list-style:none;margin:0 0 14px;padding:0;text-align:left;counter-reset:s}
-#nrScreen li{counter-increment:s;display:flex;align-items:center;gap:10px;margin:7px 0;font-size:14px;background:rgba(255,255,255,.06);border-radius:12px;padding:9px 12px}
-#nrScreen li:before{content:counter(s);flex:0 0 24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#3b0f7a;background:linear-gradient(180deg,#fff3a8,#facc15 45%,#e09a00)}
-#nrScreen .nr-done{margin:0 0 16px;font-size:13px;color:#b8b0dd}
-#nrScreen button{width:100%;border:0;border-radius:14px;padding:13px 14px;font:800 15px Inter,system-ui,sans-serif;cursor:pointer;margin-top:9px}
-#nrScreen .nr-primary{color:#3b0f7a;background:linear-gradient(180deg,#fff3a8,#facc15 45%,#e09a00);box-shadow:0 6px 16px rgba(250,204,21,.28)}
-#nrScreen .nr-primary:disabled{opacity:.65}
-#nrScreen .nr-second{color:#fff;background:transparent;border:1px solid rgba(255,255,255,.28)}
-#nrScreen .nr-msg{min-height:18px;margin-top:10px;font-size:12.5px;color:#ffb4b4}
-#nrScreen .nr-other{margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.1);font-size:12px;line-height:1.4;color:#a99fd0}
-#nrScreen .nr-other b{color:#d9d2f5}
+#nrScreen .nr-ico svg,#srScreen .nr-ico svg{width:38px;height:38px;fill:none;stroke:#facc15;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+#nrScreen h2,#srScreen h2{margin:0 0 8px;font-size:21px;font-weight:800;letter-spacing:-.2px}
+#nrScreen .nr-text,#srScreen .nr-text{margin:0 0 14px;font-size:14px;line-height:1.45;color:#d9d2f5}
+#nrScreen ol,#srScreen ol{list-style:none;margin:0 0 14px;padding:0;text-align:left;counter-reset:s}
+#nrScreen li,#srScreen li{counter-increment:s;display:flex;align-items:center;gap:10px;margin:7px 0;font-size:14px;background:rgba(255,255,255,.06);border-radius:12px;padding:9px 12px}
+#nrScreen li:before,#srScreen li:before{content:counter(s);flex:0 0 24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#3b0f7a;background:linear-gradient(180deg,#fff3a8,#facc15 45%,#e09a00)}
+#nrScreen .nr-done,#srScreen .nr-done{margin:0 0 16px;font-size:13px;color:#b8b0dd}
+#nrScreen button,#srScreen button{width:100%;border:0;border-radius:14px;padding:13px 14px;font:800 15px Inter,system-ui,sans-serif;cursor:pointer;margin-top:9px}
+#nrScreen .nr-primary,#srScreen .nr-primary{color:#3b0f7a;background:linear-gradient(180deg,#fff3a8,#facc15 45%,#e09a00);box-shadow:0 6px 16px rgba(250,204,21,.28)}
+#nrScreen .nr-primary:disabled,#srScreen .nr-primary:disabled{opacity:.65}
+#nrScreen .nr-second,#srScreen .nr-second{color:#fff;background:transparent;border:1px solid rgba(255,255,255,.28)}
+#nrScreen .nr-msg,#srScreen .nr-msg{min-height:18px;margin-top:10px;font-size:12.5px;color:#ffb4b4}
+#nrScreen .nr-other,#srScreen .nr-other{margin-top:16px;padding-top:12px;border-top:1px solid rgba(255,255,255,.1);font-size:12px;line-height:1.4;color:#a99fd0}
+#nrScreen .nr-other b,#srScreen .nr-other b{color:#d9d2f5}
 
 /* ===== mesob-number-selection-mesob-final ===== */
 body.cards-screen-active{
@@ -5743,7 +5743,31 @@ function showLobbyStatus(text,isError){
   }
   el.className='lobby-conn'+(isError?' error':''); el.hidden=false;
 }
+// The same account was opened on another device / tab: the server closed this connection (code 4004).
+// Do not reconnect by itself (the two devices would push each other out); the player taps "Play here" to come back.
+let sessionReplaced=false;
+const SR_TEXT={
+  am:{t:'ጨዋታው በሌላ መሣሪያ ተከፍቷል',x:'ይህ አካውንት በሌላ ስልክ ወይም ገጽ ላይ ተከፍቷል፤ በአንድ ጊዜ በአንድ ቦታ ብቻ መጫወት ይቻላል። ካርቴላዎችዎ እና ጨዋታዎ አልጠፉም።',p:'እዚህ ይጫወቱ',c:'ዝጋ'},
+  en:{t:'Opened on another device',x:'This account was opened on another phone or tab. You can play in one place at a time. Your cartelas and game are kept.',p:'Play here',c:'Close'}
+};
+function showSessionReplaced(){
+  sessionReplaced=true;
+  const L=SR_TEXT[LOBBY_LANG]||SR_TEXT.am, O=SR_TEXT[LOBBY_LANG==='en'?'am':'en'];
+  const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v||''; };
+  set('srTitle',L.t); set('srText',L.x); set('srHereBtn',L.p); set('srCloseBtn',L.c);
+  const o=document.getElementById('srOther'); if(o){ o.innerHTML=''; const b=document.createElement('b'); b.textContent=O.t; o.append(b,document.createElement('br'),O.x); }
+  const el=document.getElementById('srScreen'); if(el) el.hidden=false;
+  const dot=document.getElementById('connDot'); if(dot) dot.classList.remove('on');
+  showLobbyStatus('',false);
+}
+function sessionPlayHere(){
+  const el=document.getElementById('srScreen'); if(el) el.hidden=true;
+  sessionReplaced=false;
+  captureSelection();
+  connect();                                     // signing in again closes the other device; the game comes back here
+}
 function connect(){
+  if(sessionReplaced) return;
   const proto=API_BASE.startsWith('https:')?'wss://':'ws://';
   const wsUrl=proto+new URL(API_BASE).host;
   const wsHost=new URL(API_BASE).host;
@@ -5763,9 +5787,10 @@ function connect(){
     if(mine.onclose) mine.onclose();   
   },8000);
   mine.onopen=()=>{ document.getElementById('connDot').classList.add('on'); };
-  mine.onclose=()=>{
+  mine.onclose=ev=>{
     clearTimeout(watchdog);
     if(retried||ws!==mine) return; retried=true;
+    if((ev&&ev.code===4004)||sessionReplaced){ showSessionReplaced(); return; }
     document.getElementById('connDot').classList.remove('on');
     console.warn('[ws] closed / cannot connect to',wsUrl);
     showLobbyStatus(LOBBY_I18N.noconn(wsHost),true);
@@ -6046,6 +6071,10 @@ function handle(msg){
         telegramId=tid;
         sendTelegramAuth(tid);
       });
+      break;
+
+    case 'sessionReplaced':
+      showSessionReplaced();
       break;
 
     case 'authFailed':
@@ -7784,6 +7813,16 @@ connect();
 
 
 
+<div id="srScreen" hidden role="dialog" aria-live="polite">
+  <div class="nr-card">
+    <div class="nr-ico"><svg viewBox="0 0 24 24"><rect x="2.5" y="5" width="11" height="14" rx="2"/><rect x="15.5" y="8" width="6" height="11" rx="1.5"/><path d="M7 16h2"/></svg></div>
+    <h2 id="srTitle"></h2>
+    <p class="nr-text" id="srText"></p>
+    <button type="button" class="nr-primary" id="srHereBtn" onclick="sessionPlayHere()"></button>
+    <button type="button" class="nr-second" id="srCloseBtn" onclick="nrBackToBot()"></button>
+    <div class="nr-other" id="srOther"></div>
+  </div>
+</div>
 <div id="nrScreen" hidden role="dialog" aria-live="polite">
   <div class="nr-card">
     <div class="nr-ico"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.6"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M19 8v6M16 11h6"/></svg></div>
