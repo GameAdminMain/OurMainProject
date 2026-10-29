@@ -15,7 +15,8 @@
  */
 // ═══════════════════════════ CONFIG - change everything here ═══════════════════════════
 const CONFIG = {
-  url: "wss://game-server-go-three-production.up.railway.app", // game server WebSocket address
+  //url: "wss://game-server-go-three-production.up.railway.app", 
+  url: "wss://game-server.railway.internal", // game server WebSocket address game-server.railway.internal
   botToken: process.env.BOT_TOKEN || "",  // read from the BOT_TOKEN environment variable - never write the token in this file
   unverified: false,         // true = send only the Telegram ID (server needs ALLOW_UNVERIFIED_AUTH=1; staging only)
 
