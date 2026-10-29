@@ -191,8 +191,21 @@ const STAKES_RETRY_MS = 10000;
 let stakesRetryTimer=null;
 function retryStakesSoon(){ if(stakesRetryTimer||STAKES.length) return; stakesRetryTimer=setTimeout(()=>{ stakesRetryTimer=null; loadStakesFromDb(); },STAKES_RETRY_MS); }
 
-// Stakes / rooms come from the database (bingo_stakes + bingo_rooms). They are loaded ONCE at
-// start-up and refreshed every 10 minutes; the constants above are only the fallback.
+// Stakes / rooms come from the database (bingo_stakes + bingo_rooms). They are loaded at start-up and
+// refreshed every STAKES_REFRESH_MS (env, default 60 s), so a changed commission rate reaches open rooms quickly.
+const STAKES_REFRESH_MS=(()=>{ const v=Number(process.env.STAKES_REFRESH_MS); return Number.isFinite(v)&&v>=10000?Math.round(v):60*1000; })();
+let lastStakesLog='';
+// rooms copy the commission rate when they are created and are then reused round after round:
+// push a changed rate into every open room and tell its players (the card-selection window shows it)
+function applyRoomRates(){
+  for(const room of Object.values(rooms)){
+    const s=STAKES.find(x=>x.id===room.stakeId); if(!s) continue;
+    if(s.commissionRate===room.commissionRate) continue;
+    console.log(`💰 Commission of ${room.stakeId} changed: ${room.commissionRate}% -> ${s.commissionRate}%`);
+    room.commissionRate=s.commissionRate;
+    broadcast(room,{type:'rateInfo',commissionRate:room.commissionRate});
+  }
+}
 // The app names a stake by its amount (st5, st10, st20); the database's own id (S5, S10, ...) is kept in dbStakeId.
 const stakeKey=a=>'st'+(Number.isInteger(Number(a))?Number(a):String(a).replace('.','p'));
 async function loadStakesFromDb(){
@@ -218,14 +231,17 @@ async function loadStakesFromDb(){
     }
     if(!next.length){ console.warn('⚠️ getActiveStakes returned no active stakes (bingo_stakes + bingo_room_stakes + bingo_rooms must be active)'); retryStakesSoon(); return false; }
     STAKES.splice(0,STAKES.length,...next);
-    console.log('✅ Stakes loaded from database:',next.map(x=>`${x.id}=${x.amount} (room ${x.dbRoomId}, ${x.minPlayers}-${x.maxPlayers} players, ${x.maxCards} cards, room page ${x.showRoomPage?'on':'off'})`).join(' | '));
+    const summary=next.map(x=>`${x.id}=${x.amount} (room ${x.dbRoomId}, ${x.minPlayers}-${x.maxPlayers} players, ${x.maxCards} cards, commission ${x.commissionRate}%, room page ${x.showRoomPage?'on':'off'})`).join(' | ');
+    if(summary!==lastStakesLog){ lastStakesLog=summary; console.log('✅ Stakes loaded from database:',summary); }
+    applyRoomRates();
     broadcastLobby();
     return true;
   }catch(e){ console.error('loadStakesFromDb:',e.message); retryStakesSoon(); return false; }
 }
 
 loadStakesFromDb(); loadFundingWallets();
-setInterval(()=>{ loadStakesFromDb(); loadFundingWallets(); },10*60*1000);
+setInterval(loadStakesFromDb,STAKES_REFRESH_MS);
+setInterval(loadFundingWallets,10*60*1000);
 // clean up games left open by an earlier run (restart / crash); young ones are left alone
 setTimeout(()=>recoverOrphanedGames({minAgeSec:600,reason:'startup_cleanup'}),20*1000);
 setInterval(()=>recoverOrphanedGames({minAgeSec:900,reason:'stale_game'}),10*60*1000);
@@ -937,6 +953,11 @@ async function startDbGame(room){
     room.dbGameId=Number(result.game_id)||null;
     room.dbGameCode=result.game_code||null;
     room.startFailures=0;
+    // the rate the DATABASE used for this game's payout; the screen shows the same one
+    const usedRate=Number(result.commission_rate);
+    if(result.commission_rate!=null&&Number.isFinite(usedRate)&&usedRate!==room.commissionRate){
+      room.commissionRate=usedRate; broadcast(room,{type:'rateInfo',commissionRate:usedRate});
+    }
     console.log(`🎮 Game ${room.dbGameCode||room.dbGameId} created (${room.stakeId}): ${result.total_participants} players, ${result.total_cards} cartelas, gross ${result.gross_pot}, prize ${result.prize_pool}`);
 
     // Everyone's wallets changed: reload them once and push them to the apps.
@@ -1249,6 +1270,7 @@ async function endGame(room, winners, customMsg, noWinner){
         playerCount:0,
         stakeAmount:room.stake,
         status:'waiting',
+        commissionRate:room.commissionRate,
         // Include the fresh pool in the reset response so the client can switch
         // to card selection and render the new pool without a page reload.
         pool:getCardPoolForRoom(room).map(c=>({id:c.id,taken:false,takenByMe:false}))
