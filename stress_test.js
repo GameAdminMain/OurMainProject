@@ -29,8 +29,8 @@ const envNum = (k, d) => { const v = Number(env(k, d)); return Number.isFinite(v
 const CONFIG = {
   mode: env("LOADTEST_MODE", "schedule"),   // "schedule" | "fixed"
   //url: "wss://game-server-go-three-production.up.railway.app",   // PRODUCTION - refused by the safety check
-  //url: env("LOADTEST_URL", "ws://game-server.railway.internal:8080"), // STAGING game server WebSocket address
-  url: env("LOADTEST_URL", "wss://game-server-go-three-production.up.railway.app"), // STAGING game server WebSocket address
+  url: env("LOADTEST_URL", "ws://game-server.railway.internal:8080"), // STAGING game server WebSocket address
+  //url: env("LOADTEST_URL", "wss://game-server-go-three-production.up.railway.app"), // STAGING game server WebSocket address
   botToken: process.env.BOT_TOKEN || "",  // read from the BOT_TOKEN environment variable - never write the token in this file
   unverified: false,         // true = send only the Telegram ID (server needs ALLOW_UNVERIFIED_AUTH=1; staging only)
 
