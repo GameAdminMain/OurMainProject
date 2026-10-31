@@ -650,9 +650,9 @@ const LINKSET_API_URL = String(process.env.LINKSET_API_URL || "https://links.et/
 const LINKSET_API_KEY = String(process.env.LINKSET_API_KEY || "").trim().replace(/^["']|["']$/g, "");
 const LINKSET_TIMEOUT_MS = Number(process.env.LINKSET_TIMEOUT_MS) > 0 ? Number(process.env.LINKSET_TIMEOUT_MS) : 40000;
 
-// which service verifies receipts: "linkset" (links.et, default) or "checket" (check.et)
+// which service verifies receipts: "linkset" (links.et, default), "checket" (check.et) or "checkit" (checkit.et)
 const DEPOSIT_VERIFIER = String(process.env.DEPOSIT_VERIFIER || "linkset").trim().toLowerCase().replace(/[^a-z]/g, "");
-if (DEPOSIT_VERIFIER === "linkset" && !LINKSET_API_KEY) console.warn("[deposit] LINKSET_API_KEY is not set: links.et will refuse every receipt check");
+if ((DEPOSIT_VERIFIER === "linkset" || (DEPOSIT_VERIFIER === "checkit" && (process.env.DEPOSIT_FALLBACK_VERIFIER || "linkset").toLowerCase() === "linkset")) && !LINKSET_API_KEY) console.warn("[deposit] LINKSET_API_KEY is not set: links.et will refuse every receipt check");
 
 // links.et receipt -> the fields bot.js / db.approveDeposit use. telebirr already has exactly these names;
 // other providers are filled from the closest field links.et returns.
@@ -754,6 +754,97 @@ async function verifyWithLinksEt(typeName, receiptId, receiptUrl) {
 }
 
 // ─────────────────────────────────────────────
+// checkit.et  (our own receipt reader: https://checkit.et/api/process.php)
+//   GET {CHECKIT_API_URL}?type=telebirr|m-pesa&receiptid=DJ92KW2GFW   (no API key)
+//   200 {ok:true, providerKey, resolvedUrl, httpStatus, fetchedAt, receipt:{source:"telebirr-html", payerName,
+//        payerTelebirrNo, creditedPartyName, creditedPartyAccountNo, transactionStatus, receiptNo, paymentDate,
+//        settledAmount, totalPaidAmount, ...}}   same receipt shape as links.et
+//   {ok:false, error:"..."}  bad type / bad receipt id / Ethio Telecom could not be reached. M-Pesa is not built yet.
+//   It only takes a receipt number, not a link. When Ethio Telecom has no such receipt it still answers ok:true,
+//   with every field empty, so an empty receiptNo is treated as "not found".
+//
+//   CHECKIT_API_URL      default https://checkit.et/api/process.php
+//   CHECKIT_TIMEOUT_MS   default 40000 (it waits up to 30 s on Ethio Telecom)
+// ─────────────────────────────────────────────
+const CHECKIT_API_URL = String(process.env.CHECKIT_API_URL || "https://checkit.et/api/process.php").trim();
+const CHECKIT_TIMEOUT_MS = Number(process.env.CHECKIT_TIMEOUT_MS) > 0 ? Number(process.env.CHECKIT_TIMEOUT_MS) : 40000;
+
+async function verifyWithCheckIt(typeName, receiptId, receiptUrl) {
+  const type = String(typeName || "").toLowerCase();
+  // checkit.et takes only the number: take it from the link's last part when we only have a link
+  let id = receiptId;
+  if (!id && receiptUrl) {
+    const m = String(receiptUrl).match(/\/([A-Za-z0-9]{8,20})\/?(?:[?#].*)?$/);
+    id = m ? m[1].toUpperCase() : null;
+  }
+  if (!id) return { ok: false, data: { ok: false, error: "no receipt number to send to checkit.et" } };
+
+  const url = new URL(CHECKIT_API_URL);
+  url.searchParams.set("type", type);
+  url.searchParams.set("receiptid", id);
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHECKIT_TIMEOUT_MS);
+  let response = null, json = null;
+  try {
+    response = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, signal: controller.signal });
+    const text = await response.text();
+    try { json = JSON.parse(text); } catch (e) { console.error(`checkit.et returned non-JSON (HTTP ${response.status}):`, text.slice(0, 300)); }
+  } catch (e) {
+    if (e.name === "AbortError") {
+      console.error(`checkit.et gave no answer in ${CHECKIT_TIMEOUT_MS / 1000} s`);
+      return { ok: false, timeout: true };
+    }
+    console.error("checkit.et request failed:", e.message);
+    return { ok: false, unavailable: true };
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!response.ok || !json) {
+    console.error(`checkit.et HTTP ${response.status}`);
+    return { ok: false, unavailable: true };
+  }
+  if (json.ok === true && json.receipt) {
+    if (!json.receipt.receiptNo) {
+      console.log(`checkit.et: Ethio Telecom has no receipt ${id}`);
+      return { ok: false, data: json };
+    }
+    return { ok: true, data: { ok: true, receipt: receiptFromLinksEt(json, id), checkIt: json } };
+  }
+  // could not reach Ethio Telecom: a slow bank, the customer can send it again
+  if (json.httpCode !== undefined || json.curlError) {
+    console.log("checkit.et could not get the receipt from Ethio Telecom:", json.error, json.curlError || "");
+    return { ok: false, timeout: true };
+  }
+  console.log("checkit.et: not verified:", json.error);
+  return { ok: false, data: json };
+}
+
+// checkit.et goes first when DEPOSIT_VERIFIER=checkit. If it cannot confirm the receipt (M-Pesa, not found,
+// Ethio Telecom slow, checkit.et down), the receipt goes to the fallback: DEPOSIT_FALLBACK_VERIFIER =
+// "linkset" (links.et, default), "checket" (check.et) or "none".
+const DEPOSIT_FALLBACK_VERIFIER = String(process.env.DEPOSIT_FALLBACK_VERIFIER || "linkset").trim().toLowerCase().replace(/[^a-z]/g, "");
+
+async function verifyWith(verifier, typeName, receiptId, receiptUrl) {
+  if (verifier === "checket") return extractTransactionInfofromThirdParty(typeName, receiptId, receiptUrl);
+  if (verifier === "checkit") return verifyWithCheckIt(typeName, receiptId, receiptUrl);
+  return verifyWithLinksEt(typeName, receiptId, receiptUrl);
+}
+
+async function verifyReceipt(typeName, receiptId, receiptUrl) {
+  const label = { checket: "check.et", checkit: "checkit.et", linkset: "links.et" };
+  let result = await verifyWith(DEPOSIT_VERIFIER, typeName, receiptId, receiptUrl);
+  console.log(`Transaction Information for Type = ${typeName} (${label[DEPOSIT_VERIFIER] || "links.et"}):`, result);
+  if (DEPOSIT_VERIFIER === "checkit" && !result.ok && DEPOSIT_FALLBACK_VERIFIER !== "none" && DEPOSIT_FALLBACK_VERIFIER !== "checkit") {
+    console.log(`[deposit] checkit.et did not confirm the receipt, trying ${label[DEPOSIT_FALLBACK_VERIFIER] || "links.et"}`);
+    result = await verifyWith(DEPOSIT_FALLBACK_VERIFIER, typeName, receiptId, receiptUrl);
+    console.log(`Transaction Information for Type = ${typeName} (${label[DEPOSIT_FALLBACK_VERIFIER] || "links.et"}):`, result);
+  }
+  return result;
+}
+
+// ─────────────────────────────────────────────
 // MAIN DEPOSIT PROCESS
 // ─────────────────────────────────────────────
 
@@ -787,11 +878,7 @@ async function processDeposit(sms, pmName, pmAmharicName, ptName, ptAmharicName)
         return depositFail("dep_receipt_used", { duplicate: true });
       }
 
-      const useCheckEt = DEPOSIT_VERIFIER === "checket";
-      result = useCheckEt
-        ? await extractTransactionInfofromThirdParty(typeName, invoiceNo, receiptUrl)
-        : await verifyWithLinksEt(typeName, invoiceNo, receiptUrl);
-      console.log(`Transaction Information for Type = ${typeName} (${useCheckEt ? "check.et" : "links.et"}):`, result);
+      result = await verifyReceipt(typeName, invoiceNo, receiptUrl);
 
       // no answer in time: a wrong number, or the bank is slow. The customer can simply send it again.
       if (result.timeout) return depositFail("dep_verify_slow");
