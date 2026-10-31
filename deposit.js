@@ -827,6 +827,19 @@ async function verifyWithCheckIt(typeName, receiptId, receiptUrl) {
 const DEPOSIT_FALLBACK_VERIFIER = String(process.env.DEPOSIT_FALLBACK_VERIFIER || "linkset").trim().toLowerCase().replace(/[^a-z]/g, "");
 
 async function verifyWith(verifier, typeName, receiptId, receiptUrl) {
+  // log which URL this receipt is checked against
+  let where;
+  if (verifier === "checkit") {
+    const u = new URL(CHECKIT_API_URL);
+    u.searchParams.set("type", String(typeName || "").toLowerCase());
+    u.searchParams.set("receiptid", receiptId || "(taken from link)");
+    where = `checkit.et GET ${u.toString()}`;
+  } else if (verifier === "checket") {
+    where = `check.et POST ${CHECKET_VERIFY_URL}`;
+  } else {
+    where = `links.et POST ${LINKSET_API_URL}`;
+  }
+  console.log(`[deposit] checking receipt ${receiptId || receiptUrl} via ${where}`);
   if (verifier === "checket") return extractTransactionInfofromThirdParty(typeName, receiptId, receiptUrl);
   if (verifier === "checkit") return verifyWithCheckIt(typeName, receiptId, receiptUrl);
   return verifyWithLinksEt(typeName, receiptId, receiptUrl);
