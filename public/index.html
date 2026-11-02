@@ -5790,6 +5790,7 @@ function connect(){
   mine.onclose=ev=>{
     clearTimeout(watchdog);
     if(retried||ws!==mine) return; retried=true;
+    wsAuthed=false;
     if((ev&&ev.code===4004)||sessionReplaced){ showSessionReplaced(); return; }
     document.getElementById('connDot').classList.remove('on');
     console.warn('[ws] closed / cannot connect to',wsUrl);
@@ -5949,6 +5950,8 @@ const bgGames={};
 let pendingStakeJoin=null;        
 let authBlocked=false;            
 let authPending=true;             
+let wsAuthed=false;               // this connection is open AND the server confirmed telegramAuth
+let queuedEnterRoom=null;         // a stake tapped while (re)connecting: opened as soon as the sign-in finishes
 let pendingStakes=null;           
 let joinedStakes=new Set();       
 function stakeLabel(stakeId){ const m=String(stakeId||'').match(/([0-9]+)/); return m?`Play ${m[1]}`:'Game'; }
@@ -6055,6 +6058,7 @@ function handle(msg){
   switch(msg.type){
 
     case 'connected':
+      wsAuthed=false;
       myPlayerId=msg.playerId;
       if(Number.isFinite(msg.online)) lobbyOnline=msg.online;
       if(msg.stakes) renderStakes(msg.stakes);
@@ -6129,6 +6133,8 @@ function handle(msg){
   } else {
     goScreen('screenLobby');
   }
+  wsAuthed=true;
+  if(queuedEnterRoom){ const q=queuedEnterRoom; queuedEnterRoom=null; setTimeout(()=>enterRoom(q),0); }
   break;
 
     case 'postGameWait': {
@@ -6164,11 +6170,20 @@ function handle(msg){
         wsSend({type:'joinRoom',stakeId:restoreSelection.stakeId,telegramId:telegramId||getTelegramId()});
         break;
       }
-      openingRoom=false; restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby');
-      if(pendingStakeJoin){
-        const sid=pendingStakeJoin; pendingStakeJoin=null;
-        localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
-        wsSend({type:'joinRoom',stakeId:sid,telegramId:telegramId||getTelegramId()});
+      {
+        // The player may have tapped a stake while this reply was on its way (an old saved room that no longer
+        // exists, or the start-up reconnect). Keep 'openingRoom' so the answer to that tap still opens the game;
+        // clearing it here made the first tap do nothing and the player had to tap the stake a second time.
+        const keepOpening=openingRoom;
+        openingRoom=false; restoringActiveGame=false; clearActiveGameState(); myRoomId=null; myStakeId=null; myCardId=null; myCardId2=null; myCardId3=null; myCardId4=null; myCardNumbers=[]; myCardNumbers2=[]; goScreen('screenLobby');
+        if(pendingStakeJoin){
+          const sid=pendingStakeJoin; pendingStakeJoin=null;
+          localStorage.removeItem('roomId'); localStorage.removeItem('stakeId');
+          openingRoom=keepOpening;
+          wsSend({type:'joinRoom',stakeId:sid,telegramId:telegramId||getTelegramId()});
+        } else if(keepOpening){
+          openingRoom=true;            // a joinRoom from the tap is still in flight
+        }
       }
       break;
 
@@ -7252,6 +7267,13 @@ let roomsPageStake=null;
 function stakeRooms(s){ return (s&&Array.isArray(s.rooms)&&s.rooms.length)?s.rooms:[s]; }
 function stakeOfTable(tid){ return lobbyStakesNow.find(x=>stakeRooms(x).some(r=>r.stakeId===tid))||null; }
 function enterRoom(tableId){
+  // tapped before the connection is open and signed in: the message would be dropped (wsSend only sends on an
+  // open socket) and nothing would happen. Remember the tap and open it as soon as 'authSuccess' arrives.
+  if(!wsAuthed||!ws||ws.readyState!==1){
+    queuedEnterRoom=tableId;
+    showLobbyStatus(LOBBY_I18N.connecting,false);
+    return;
+  }
   const tid=telegramId||getTelegramId();
   let saved=null;
   try{ saved=JSON.parse(localStorage.getItem('activeGameState')||'null'); }catch(e){ saved=null; }
