@@ -25,12 +25,11 @@ RUN apt-get update \
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Dependencies first (cached between deploys). npm install, not npm ci: package-lock.json is not in sync with package.json.
-COPY package.json package-lock.json ./
-RUN npm install --omit=dev --no-audit --no-fund && npm cache clean --force
-
-# Only the files the data server needs (keeps the committed node_modules folder out of the image)
-COPY data_server.js db.js tg_auth.js reconcile.js ./
+# Whole repository, so this image also works if Railway uses it for another service (server.js, bot, ...).
+# The committed node_modules folder is removed and installed fresh for Linux.
+# npm install, not npm ci: package-lock.json is not in sync with package.json.
+COPY . .
+RUN rm -rf node_modules && npm install --omit=dev --no-audit --no-fund && npm cache clean --force
 
 ENV PORT=3001
 EXPOSE 3001
