@@ -1244,6 +1244,8 @@ async getActiveStakes() {
         (SELECT COALESCE(SUM(b.awarded_amount), 0) FROM user_bonuses b
            WHERE b.user_id = u.id AND b.status IN ('active', 'completed', 'expired', 'forfeited')) AS bonus_total,
         (SELECT COUNT(*) FROM user_bonuses b WHERE b.user_id = u.id) AS bonus_count,
+        (SELECT COUNT(*) FROM user_bonuses b
+           WHERE b.user_id = u.id AND b.status IN ('active', 'completed', 'expired', 'forfeited')) AS bonus_received_count,
         COALESCE(wb.main_balance, 0) AS main_balance,
         COALESCE(wb.play_balance, 0) AS play_balance,
         COALESCE(wb.bonus_balance, 0) AS bonus_balance
@@ -1260,7 +1262,7 @@ async getActiveStakes() {
       depositCount: n(r.deposit_count), depositTotal: n(r.deposit_total),
       depositPending: n(r.deposit_pending), depositRejected: n(r.deposit_rejected),
       withdrawCount: n(r.withdraw_count), withdrawTotal: n(r.withdraw_total), withdrawPending: n(r.withdraw_pending),
-      bonusTotal: n(r.bonus_total), bonusCount: n(r.bonus_count),
+      bonusTotal: n(r.bonus_total), bonusCount: n(r.bonus_count), bonusReceivedCount: n(r.bonus_received_count),
       mainBalance: n(r.main_balance), playBalance: n(r.play_balance), bonusBalance: n(r.bonus_balance)
     };
   },

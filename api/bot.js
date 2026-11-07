@@ -2761,7 +2761,7 @@ async function adminUserCard(user) {
         : "") + `\n` +
       `📤 Withdrawals: *${m.withdrawCount}* time(s) · ${admEtb(m.withdrawTotal)} ETB` +
       (m.withdrawPending ? ` (+${m.withdrawPending} waiting)` : "") + `\n` +
-      `🎁 Total bonus received: *${admEtb(m.bonusTotal)}* ETB`;
+      `🎁 Bonuses received: *${m.bonusReceivedCount}* time(s) · ${admEtb(m.bonusTotal)} ETB`;
   } else {
     text += `\n\n⚠️ Money summary is not available right now.`;
   }
@@ -2852,7 +2852,7 @@ async function adminUserBonusView(userId, page) {
 
   let text = `🎁 *Bonus history*\n` +
     `👤 ${mdEsc(u?.name || "User")} · \`${u?.phone || "—"}\`\n`;
-  if (m) text += `🎁 Bonus wallet now: *${admEtb(m.bonusBalance)}* ETB · Total received: *${admEtb(m.bonusTotal)}* ETB\n`;
+  if (m) text += `🎁 Bonus wallet now: *${admEtb(m.bonusBalance)}* ETB · Total received: *${m.bonusReceivedCount}* time(s) · ${admEtb(m.bonusTotal)} ETB\n`;
   text += `Page *${h.page}* of *${h.pages}* · ${h.total} total\n`;
 
   if (!h.rows.length) {
