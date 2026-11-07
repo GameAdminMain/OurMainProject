@@ -1419,6 +1419,7 @@ wss.on('connection',(ws,req)=>{
                 if(closeOlderSessions(client)) break;
                 relinkAllRooms(client,ws,tid);
                 broadcastLobby();            // tell the lobby which stakes this player is already in   // keep receiving every game this account is playing
+                bingoDb.touchUserLastSeen(tid).catch(e=>console.error('touchUserLastSeen:',e.message));   // admin card: last online
                 send(ws,{type:'authSuccess',playerName:client.playerName,balance:client.balance,wallets:client.wallets,isRegistered:true,inactive:client.inactive===true});
               } else {
                 // loadUser() is null both for "not registered" and for "database not reachable".

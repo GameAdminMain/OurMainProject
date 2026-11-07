@@ -389,6 +389,7 @@ bot.use(async (ctx, next) => {
       // Normal messages / commands
       return respond("reply", ctx, "🚫 Your account has been blocked. Please contact support.");
     }
+    if (user) db.touchUserLastSeen(telegramId).catch(e => console.error("touchUserLastSeen:", e.message));
     // Not registered yet (private chat, a message or a button): ask for the phone number first.
     if (!user && ctx.chat?.type === "private" && (ctx.message || ctx.callbackQuery) && !ctx.message?.contact) {
       const existing = await db.getUserByTelegramIdIncludingInactive(telegramId);   // a paused account is a registered account
@@ -2717,17 +2718,35 @@ const ADM_STATUS_ICON = {
 };
 const admStatus = (s) => `${ADM_STATUS_ICON[s] || "•"} ${s || "—"}`;
 
+// "5 min ago", "3 h ago", "2 days ago"
+function admAgo(ts) {
+  const min = Math.max(0, Math.floor((Date.now() - new Date(ts).getTime()) / 60000));
+  if (min < 1) return "just now";
+  if (min < 60) return `${min} min ago`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  return `${d} day${d === 1 ? "" : "s"} ago`;
+}
+
 async function adminUserCard(user) {
   let m = null;
   try { m = await db.getAdminUserMoneySummary(user.id); }
   catch (e) { console.error("getAdminUserMoneySummary:", e.message); }
+  let stakes = null;
+  try { stakes = await db.getAdminUserGamesByStake(user.id); }
+  catch (e) { console.error("getAdminUserGamesByStake:", e.message); }
+  let act = null;
+  try { act = await db.getAdminUserLastActivity(user.id); }
+  catch (e) { console.error("getAdminUserLastActivity:", e.message); }
 
   let text =
     `👤 *USER FOUND*\n\n` +
     `👤 Name: *${mdEsc(user.name || "Unknown")}*\n` +
     `📱 Phone: \`${user.phone || "Not available"}\`\n` +
     `🔐 Blocked: ${user.is_blocked ? "🚫 Yes" : "✅ No"}\n` +
-    `📌 Status: ${user.is_active ? "🟢 Active" : "⚪ Inactive"}`;
+    `📌 Status: ${user.is_active ? "🟢 Active" : "⚪ Inactive"}\n` +
+    `🕒 Last online: ${act ? (act.last ? `*${bnWhen(act.last)}* (${admAgo(act.last)})` : "never") : "not available"}`;
 
   if (m) {
     text +=
@@ -2745,6 +2764,16 @@ async function adminUserCard(user) {
       `🎁 Total bonus received: *${admEtb(m.bonusTotal)}* ETB`;
   } else {
     text += `\n\n⚠️ Money summary is not available right now.`;
+  }
+
+  if (stakes) {
+    const total = stakes.reduce((t, r) => t + r.games, 0);
+    text += `\n\n🎮 *Games per stake* (total *${total}*)`;
+    text += stakes.length
+      ? "\n" + stakes.map(r => `🎯 ${admEtb(r.stake)} ETB: *${r.games}* game(s) · ${r.wins} won`).join("\n")
+      : `\nNo games played yet.`;
+  } else {
+    text += `\n\n⚠️ Games per stake is not available right now.`;
   }
 
   const keyboard = [];

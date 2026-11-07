@@ -736,6 +736,10 @@ async function creditPendingDepositTx(client, { userId, telegramId, deposit, pay
         return { transactionId, transaction, updatedPaymentAccount, completedDepositResult, awardedBonuses, balances };
 }
 
+// users.last_seen writes are throttled (telegramId -> ms of the last write)
+const lastSeenTouched = new Map();
+const LAST_SEEN_TOUCH_MS = 60 * 1000;
+
 module.exports = {
 
   async saveClientError(e) {
@@ -1259,6 +1263,62 @@ async getActiveStakes() {
       bonusTotal: n(r.bonus_total), bonusCount: n(r.bonus_count),
       mainBalance: n(r.main_balance), playBalance: n(r.play_balance), bonusBalance: n(r.bonus_balance)
     };
+  },
+
+  // games played by ONE user, broken down by stake amount (completed games only; refunded/cancelled seats not counted)
+  async getAdminUserGamesByStake(userId) {
+    const { rows } = await pool.query(
+      `
+      SELECT g.stake_amount,
+             COUNT(*)::int                                AS games,
+             COUNT(*) FILTER (WHERE bp.amount_won > 0)::int AS wins
+      FROM bingo_participants bp
+      JOIN bingo_games g ON g.id = bp.game_id AND g.status = 'completed'
+      WHERE bp.user_id = $1
+        AND bp.status NOT IN ('refunded', 'cancelled')
+      GROUP BY g.stake_amount
+      ORDER BY g.stake_amount
+      `,
+      [userId]
+    );
+    return rows.map(r => ({ stake: Number(r.stake_amount), games: Number(r.games), wins: Number(r.wins) }));
+  },
+
+  // when ONE user was last online: the newest of users.last_seen (bot / game app), the last game joined and the last
+  // deposit / withdrawal request. The activity tables cover the time before last_seen was kept up to date.
+  async getAdminUserLastActivity(userId) {
+    const { rows } = await pool.query(
+      `
+      SELECT u.last_seen,
+             (SELECT MAX(bp.joined_at) FROM bingo_participants bp WHERE bp.user_id = u.id) AS last_game,
+             GREATEST(
+               (SELECT MAX(d.created_at) FROM deposits d WHERE d.user_id = u.id),
+               (SELECT MAX(r.created_at) FROM manual_deposit_requests r WHERE r.user_id = u.id),
+               (SELECT MAX(w.created_at) FROM withdrawals w WHERE w.user_id = u.id)
+             ) AS last_money
+      FROM users u
+      WHERE u.id = $1
+      `,
+      [userId]
+    );
+    if (!rows.length) return null;
+    const r = rows[0];
+    const last = [r.last_seen, r.last_game, r.last_money].filter(Boolean)
+      .reduce((a, b) => (new Date(b) > new Date(a) ? b : a), null);
+    return { lastSeen: r.last_seen, lastGame: r.last_game, lastMoney: r.last_money, last };
+  },
+
+  // marks a user as online now (bot message / button, game app login). At most one write per user per minute.
+  async touchUserLastSeen(telegramId) {
+    const key = String(telegramId), now = Date.now();
+    if (now - (lastSeenTouched.get(key) || 0) < LAST_SEEN_TOUCH_MS) return;
+    lastSeenTouched.set(key, now);
+    if (lastSeenTouched.size > 50000) lastSeenTouched.clear();
+    await pool.query(
+      `UPDATE users SET last_seen = NOW()
+       WHERE telegram_id = $1 AND (last_seen IS NULL OR last_seen < NOW() - INTERVAL '1 minute')`,
+      [telegramId]
+    );
   },
 
   // deposits: payment method, reference number, the account the money was sent TO, amount, status, date
