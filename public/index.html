@@ -7807,10 +7807,20 @@ connect();
     if(b&&l&&nn) b.setAttribute('aria-label',(l.textContent||'')+' '+(nn.textContent||''));
   },1000);
 
-  /* --- support button (only when SUPPORT_URL is configured) --- */
+  /* --- support button: opens the support account (SUPPORT_URL, default @MesobBingoSupport) --- */
   safe(function(){
-    var u=(window.MESOB_ENV&&MESOB_ENV.supportUrl)||''; var b=document.getElementById('helpSupportBtn');
-    if(u&&b){ b.style.display='block'; b.onclick=function(){ try{ if(/^https:\/\/t\.me\//i.test(u)&&Telegram.WebApp.openTelegramLink) Telegram.WebApp.openTelegramLink(u); else window.open(u,'_blank'); }catch(e){} }; }
+    var DEF='MesobBingoSupport';
+    // SUPPORT_URL may be written as @handle, handle, t.me/handle, https://t.me/@handle or tg://resolve?domain=handle;
+    // anything without a real handle (empty, "https://t.me/", "@") would open the user's Saved Messages, so fall back to the default.
+    var raw=String((window.MESOB_ENV&&MESOB_ENV.supportUrl)||'').trim();
+    var h=raw.replace(/^tg:\/\/resolve\?domain=/i,'').replace(/^(https?:\/\/)?(www\.)?(t\.me|telegram\.me)\//i,'').replace(/^@+/,'').split(/[\/?#&]/)[0];
+    if(!/^[A-Za-z][A-Za-z0-9_]{3,31}$/.test(h)) h=DEF;
+    var u='https://t.me/'+h;
+    var b=document.getElementById('helpSupportBtn');
+    if(b){ b.style.display='block'; b.onclick=function(){
+      try{ if(window.Telegram&&Telegram.WebApp&&Telegram.WebApp.openTelegramLink){ Telegram.WebApp.openTelegramLink(u); return; } }catch(e){}
+      try{ window.open(u,'_blank'); }catch(e){ location.href=u; }
+    }; }
   });
 
   /* --- error reporter: a few crashes per session go to the data server log --- */
