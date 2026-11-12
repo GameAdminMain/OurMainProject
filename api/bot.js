@@ -7084,21 +7084,29 @@ async function showWithdrawal(
     Number(walletRow?.main_balance || 0);
 
 
+  const paymentMethods =
+    await db.getPaymentMethods();
+
+
+  // minimum from the admin's withdrawal rules (Rule manager -> Withdrawal rules).
+  // Each method can have its own rule, so the user must reach the LOWEST minimum of the methods offered.
+  const methodMins = (paymentMethods && paymentMethods.length)
+    ? await Promise.all(paymentMethods.map(async (pm) => (await db.getWithdrawalLimits(pm.id)).min))
+    : [(await db.getWithdrawalLimits(null)).min];
+  const minWithdraw = Math.min(...methodMins);
+
+
   if (
-    balance < 50
+    balance < minWithdraw
   ) {
 
     return respond("reply", ctx, 
 
-      await T(ctx, "wd_low_balance", balance)
+      await T(ctx, "wd_low_balance", balance, minWithdraw)
 
     );
 
   }
-
-
-  const paymentMethods =
-    await db.getPaymentMethods();
 
 
   if (
@@ -11819,12 +11827,27 @@ pendingWithdrawal[telegramId] = {
 
           }
 
+          // limits from the admin's withdrawal rule for the chosen payment method
+          const wdLimits =
+            await db.getWithdrawalLimits(withdrawal.paymentMethodId);
+
           if (
-            amount < 50
+            amount < wdLimits.min
           ) {
 
             return respond("reply", ctx, 
-              await T(ctx, "wd_amount_min")
+              await T(ctx, "wd_amount_min", wdLimits.min)
+            );
+
+          }
+
+          if (
+            wdLimits.max !== null &&
+            amount > wdLimits.max
+          ) {
+
+            return respond("reply", ctx, 
+              await T(ctx, "wd_amount_max", wdLimits.max)
             );
 
           }

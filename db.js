@@ -6963,6 +6963,41 @@ async approveDeposit(receipt, telegramId) {
 	  }
 	},
 
+	// Withdrawal limits for a payment method: the most specific ACTIVE row of withdrawal_rules
+	// (a rule for this method first, then a rule for every method; newest wins). Returns { min, max, hasRule }.
+	// No matching rule -> min falls back to DEFAULT_WITHDRAW_MIN (the old hard-coded 50 ETB), max = no limit.
+	DEFAULT_WITHDRAW_MIN: 50,
+	async getWithdrawalLimits(paymentMethodId) {
+	  const fallback = { min: this.DEFAULT_WITHDRAW_MIN, max: null, hasRule: false };
+	  try {
+	    const { rows } = await pool.query(
+	      `
+	      SELECT minimum_amount, maximum_amount
+	      FROM withdrawal_rules wr
+	      WHERE wr.is_active = TRUE
+	        AND (wr.starts_at IS NULL OR wr.starts_at <= NOW())
+	        AND (wr.ends_at   IS NULL OR wr.ends_at   >= NOW())
+	        AND (wr.payment_method_id IS NULL OR wr.payment_method_id = $1)
+	      ORDER BY
+	        CASE WHEN wr.payment_method_id = $1 THEN 0 ELSE 1 END,
+	        wr.id DESC
+	      LIMIT 1
+	      `,
+	      [paymentMethodId ?? null]
+	    );
+	    const r = rows[0];
+	    if (!r) return fallback;
+	    return {
+	      min: r.minimum_amount !== null ? Number(r.minimum_amount) : this.DEFAULT_WITHDRAW_MIN,
+	      max: r.maximum_amount !== null ? Number(r.maximum_amount) : null,
+	      hasRule: true
+	    };
+	  } catch (err) {
+	    console.error("Withdrawal limits error:", err.message);
+	    return fallback;
+	  }
+	},
+
 	// ============================================================
 	// RULE MANAGER (admin): deposit_rules, withdrawal_rules, transfer_rules
 	// kind: "deposit" | "withdrawal" | "transfer". Only the columns listed here can be written.

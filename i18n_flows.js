@@ -137,8 +137,8 @@ const FLOWS = {
   dep_cancelled: { en: "Your deposit request was cancelled. ❌", am: "የገቢ ጥያቄዎ ተሰርዟል። ❌" },
   // ================= withdraw: start =================
   wd_low_balance: {
-    en: (b) => `❌ Your balance is not enough.\n\n💰 Your balance: ${b} ETB\n\nThe minimum withdrawal is 50 ETB.`,
-    am: (b) => `❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n💰 ያለዎት ሂሳብ፦ ${b} ETB\n\nዝቅተኛው የወጪ መጠን 50 ETB ነው።`
+    en: (b, min = 50) => `❌ Your balance is not enough.\n\n💰 Your balance: ${b} ETB\n\nThe minimum withdrawal is ${min} ETB.`,
+    am: (b, min = 50) => `❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n💰 ያለዎት ሂሳብ፦ ${b} ETB\n\nዝቅተኛው የወጪ መጠን ${min} ETB ነው።`
   },
   wd_no_methods: { en: "❌ No withdrawal payment method is available right now.", am: "❌ ለጊዜው የወጪ የክፍያ መንገድ አልተዘጋጀም።" },
   wd_choose_method: {
@@ -175,7 +175,14 @@ const FLOWS = {
   wd_account_invalid: { en: "❌ Please enter a valid account number.", am: "❌ እባክዎ ትክክለኛ የአካውንት ቁጥር ያስገቡ።" },
   wd_account_too_long: { en: "❌ The account number cannot be longer than 30 characters.", am: "❌ የአካውንት ቁጥሩ ከ30 ፊደል/ቁጥር መብለጥ አይችልም።" },
   wd_amount_invalid: { en: "❌ Please enter a valid amount.", am: "❌ እባክዎ ትክክለኛ የብር መጠን ያስገቡ።" },
-  wd_amount_min: { en: "❌ The minimum withdrawal is 50 ETB.", am: "❌ ዝቅተኛው የወጪ መጠን 50 ETB ነው።" },
+  wd_amount_min: {
+    en: (min = 50) => `❌ The minimum withdrawal is ${min} ETB.`,
+    am: (min = 50) => `❌ ዝቅተኛው የወጪ መጠን ${min} ETB ነው።`
+  },
+  wd_amount_max: {
+    en: (max) => `❌ The maximum withdrawal is ${max} ETB.`,
+    am: (max) => `❌ ከፍተኛው የወጪ መጠን ${max} ETB ነው።`
+  },
   wd_insufficient: {
     en: (bal, amount) => `❌ Your balance is not enough.\n\n💰 Your balance: ${bal} ETB\n💸 You requested: ${amount} ETB`,
     am: (bal, amount) => `❌ በቂ ቀሪ ሂሳብ የሎትም።\n\n💰 ያለዎት ቀሪ ሂሳብ፦ ${bal} ETB\n💸 የጠየቁት፦ ${amount} ETB`
