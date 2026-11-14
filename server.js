@@ -271,6 +271,14 @@ async function sendTelegramText(chatId,text){
     if(!r.ok) console.warn('Telegram sendMessage failed for',chatId,'HTTP',r.status);
   }catch(e){ console.warn('Telegram sendMessage failed for',chatId+':',e.message); }
 }
+// urgent problems go to ALERT_CHAT_IDS (comma separated) or, when empty, every main admin (same rule as reconcile.js)
+async function alertAdmins(text){
+  try{
+    let ids=String(process.env.ALERT_CHAT_IDS||'').split(',').map(x=>x.trim()).filter(Boolean);
+    if(!ids.length&&typeof bingoDb.getMainAdminTelegramIds==='function') ids=await bingoDb.getMainAdminTelegramIds();
+    for(const id of ids) await sendTelegramText(id,text);
+  }catch(e){ console.error('alertAdmins:',e.message); }
+}
 async function announceGameBonuses(awards){
   if(!Array.isArray(awards)||!awards.length) return;
   await forEachLimit(awards,5,async a=>{
@@ -1061,8 +1069,7 @@ function autoClaimForAll(room){
   });
   if(room.claimedThisRound.length){
     if(room.callTimer) clearTimeout(room.callTimer);
-    if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
-    room.claimEvalTimer=setTimeout(()=>evaluateClaims(room),CLAIM_COLLECT_MS);
+    if(!room.claimEvalTimer) room.claimEvalTimer=setTimeout(()=>evaluateClaims(room),CLAIM_COLLECT_MS);
   }
 }
 
@@ -1118,7 +1125,9 @@ async function settleDbGame(room,winners){
     }
   }
   if(!result){
-    console.error(`CRITICAL: winners of game ${room.dbGameCode||room.dbGameId} were NOT paid. Run: SELECT public.end_bingo_game(${room.dbGameId}, ARRAY[${ids.join(',')}]::integer[], ARRAY[${called.join(',')}]::integer[]);`);
+    const fix=`SELECT public.end_bingo_game(${room.dbGameId}, ARRAY[${ids.join(',')}]::integer[], ARRAY[${called.join(',')}]::integer[]);`;
+    console.error(`CRITICAL: winners of game ${room.dbGameCode||room.dbGameId} were NOT paid. Run: ${fix}`);
+    alertAdmins(`🚨 Winners of game ${room.dbGameCode||room.dbGameId} were NOT paid (database error). Pay them before the game is cleaned up, with:\n${fix}`);
     return null;
   }
   const rows=Array.isArray(result.winner_details)?result.winner_details:(Array.isArray(result.winners)?result.winners:[]);
@@ -1135,7 +1144,7 @@ async function settleDbGame(room,winners){
 async function endGame(room, winners, customMsg, noWinner){
   if(room.callTimer) clearTimeout(room.callTimer);
   if(room.countdownTimer) clearInterval(room.countdownTimer);
-  if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
+  if(room.claimEvalTimer){ clearTimeout(room.claimEvalTimer); room.claimEvalTimer=null; }
   room.status='finished'; room.claimWindowOpen=false;
 
   let winAmount=0, winnerNames=[], winnerTids=[];
@@ -1765,9 +1774,9 @@ wss.on('connection',(ws,req)=>{
 
               if(room.callTimer) clearTimeout(room.callTimer);
 
-              if(room.claimEvalTimer) clearTimeout(room.claimEvalTimer);
-
-              room.claimEvalTimer=setTimeout(()=>evaluateClaims(room), CLAIM_COLLECT_MS);
+              // Start the evaluation timer only once. Resetting it on every claim let one player keep sending
+              // claimBingo (every < 700 ms) and freeze the game forever, so nobody could win.
+              if(!room.claimEvalTimer) room.claimEvalTimer=setTimeout(()=>evaluateClaims(room), CLAIM_COLLECT_MS);
 
               break;
 
