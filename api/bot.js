@@ -2770,15 +2770,17 @@ async function adminUserCard(user) {
   }
 
   if (last) {
-    const ld = last.lastDeposit, lw = last.lastWithdrawal;
+    const ld = last.lastDeposit, lw = last.lastWithdrawal, lb = last.lastBonus;
     text +=
       `\n\n🧾 *Last transactions*\n` +
       `📥 Last deposit: ` +
       (ld ? `*${ld.amount == null ? "—" : admEtb(ld.amount)} ETB* · ${bnWhen(ld.at)}` : "none") + `\n` +
       `📤 Last withdrawal: ` +
-      (lw ? `*${lw.amount == null ? "—" : admEtb(lw.amount)} ETB* · ${mdEsc(lw.method || "—")} · ${bnWhen(lw.at)}` : "none");
+      (lw ? `*${lw.amount == null ? "—" : admEtb(lw.amount)} ETB* · ${mdEsc(lw.method || "—")} · ${bnWhen(lw.at)}` : "none") + `\n` +
+      `🎁 Last bonus: ` +
+      (lb ? `*${lb.amount == null ? "—" : admEtb(lb.amount)} ETB* · ${bnWhen(lb.at)}` : "none");
   } else {
-    text += `\n\n⚠️ Last deposit / withdrawal is not available right now.`;
+    text += `\n\n⚠️ Last deposit / withdrawal / bonus is not available right now.`;
   }
 
   if (stakes) {

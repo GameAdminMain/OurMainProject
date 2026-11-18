@@ -1310,8 +1310,8 @@ async getActiveStakes() {
     return { lastSeen: r.last_seen, lastGame: r.last_game, lastMoney: r.last_money, last };
   },
 
-  // the user's newest completed deposit and newest approved withdrawal (same statuses the money summary counts).
-  // Either is null when the user has none.
+  // the user's newest completed deposit, newest approved withdrawal and newest bonus received
+  // (same statuses the money summary counts). Each is null when the user has none.
   async getAdminUserLastMoney(userId) {
     const { rows } = await pool.query(
       `
@@ -1326,13 +1326,18 @@ async getActiveStakes() {
            LEFT JOIN payment_methods pm ON pm.id = w.payment_method_id
            WHERE w.user_id = $1 AND w.status = 'approved'
            ORDER BY w.created_at DESC, w.id DESC
-           LIMIT 1) AS last_withdrawal
+           LIMIT 1) AS last_withdrawal,
+        (SELECT json_build_object('amount', b.awarded_amount, 'at', COALESCE(b.awarded_at, b.created_at))
+           FROM user_bonuses b
+           WHERE b.user_id = $1 AND b.status IN ('active', 'completed', 'expired', 'forfeited')
+           ORDER BY COALESCE(b.awarded_at, b.created_at) DESC, b.id DESC
+           LIMIT 1) AS last_bonus
       `,
       [userId]
     );
     const r = rows[0] || {};
     const fix = x => (x ? { ...x, amount: x.amount == null ? null : Number(x.amount) } : null);
-    return { lastDeposit: fix(r.last_deposit), lastWithdrawal: fix(r.last_withdrawal) };
+    return { lastDeposit: fix(r.last_deposit), lastWithdrawal: fix(r.last_withdrawal), lastBonus: fix(r.last_bonus) };
   },
 
   // marks a user as online now (bot message / button, game app login). At most one write per user per minute.
