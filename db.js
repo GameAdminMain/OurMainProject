@@ -1310,6 +1310,31 @@ async getActiveStakes() {
     return { lastSeen: r.last_seen, lastGame: r.last_game, lastMoney: r.last_money, last };
   },
 
+  // the user's newest completed deposit and newest approved withdrawal (same statuses the money summary counts).
+  // Either is null when the user has none.
+  async getAdminUserLastMoney(userId) {
+    const { rows } = await pool.query(
+      `
+      SELECT
+        (SELECT json_build_object('amount', d.amount, 'at', d.created_at)
+           FROM deposits d
+           WHERE d.user_id = $1 AND d.status = 'completed'
+           ORDER BY d.created_at DESC, d.id DESC
+           LIMIT 1) AS last_deposit,
+        (SELECT json_build_object('amount', w.amount, 'at', w.created_at, 'method', pm.name)
+           FROM withdrawals w
+           LEFT JOIN payment_methods pm ON pm.id = w.payment_method_id
+           WHERE w.user_id = $1 AND w.status = 'approved'
+           ORDER BY w.created_at DESC, w.id DESC
+           LIMIT 1) AS last_withdrawal
+      `,
+      [userId]
+    );
+    const r = rows[0] || {};
+    const fix = x => (x ? { ...x, amount: x.amount == null ? null : Number(x.amount) } : null);
+    return { lastDeposit: fix(r.last_deposit), lastWithdrawal: fix(r.last_withdrawal) };
+  },
+
   // marks a user as online now (bot message / button, game app login). At most one write per user per minute.
   async touchUserLastSeen(telegramId) {
     const key = String(telegramId), now = Date.now();

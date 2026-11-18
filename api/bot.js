@@ -2739,6 +2739,9 @@ async function adminUserCard(user) {
   let act = null;
   try { act = await db.getAdminUserLastActivity(user.id); }
   catch (e) { console.error("getAdminUserLastActivity:", e.message); }
+  let last = null;
+  try { last = await db.getAdminUserLastMoney(user.id); }
+  catch (e) { console.error("getAdminUserLastMoney:", e.message); }
 
   let text =
     `👤 *USER FOUND*\n\n` +
@@ -2764,6 +2767,18 @@ async function adminUserCard(user) {
       `🎁 Bonuses received: *${m.bonusReceivedCount}* time(s) · ${admEtb(m.bonusTotal)} ETB`;
   } else {
     text += `\n\n⚠️ Money summary is not available right now.`;
+  }
+
+  if (last) {
+    const ld = last.lastDeposit, lw = last.lastWithdrawal;
+    text +=
+      `\n\n🧾 *Last transactions*\n` +
+      `📥 Last deposit: ` +
+      (ld ? `*${ld.amount == null ? "—" : admEtb(ld.amount)} ETB* · ${bnWhen(ld.at)}` : "none") + `\n` +
+      `📤 Last withdrawal: ` +
+      (lw ? `*${lw.amount == null ? "—" : admEtb(lw.amount)} ETB* · ${mdEsc(lw.method || "—")} · ${bnWhen(lw.at)}` : "none");
+  } else {
+    text += `\n\n⚠️ Last deposit / withdrawal is not available right now.`;
   }
 
   if (stakes) {
