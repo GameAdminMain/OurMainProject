@@ -21,6 +21,7 @@ const L = {
     s_receipt: "Receipt", s_player: "Player", s_payment: "Payment", s_status: "Status & dates",
     reference: "Reference", deposit_id: "Deposit ID", name: "Name", username: "Username", tg_id: "Telegram ID",
     phone: "Phone", user_id: "User ID", player_state: "Account", blocked: "🚫 blocked", paused: "⏸ paused", active: "🟢 active",
+    is_blocked: "Blocked", yes_blocked: "🚫 Yes", no_blocked: "✅ No",
     amount: "Amount", method: "Method", to_account: "Paid to", payer: "Payer (receipt)", payer_acc: "Payer account",
     status: "Status", created: "Used / submitted", credited: "Credited", approved_by: "Approved by", auto: "automatic (bot)",
     rejected: "Rejected", rejected_by: "Rejected by", reason: "Reason", updated: "Last change", tx: "Transaction", rule: "Deposit rule",
@@ -42,6 +43,7 @@ const L = {
     s_receipt: "ደረሰኝ", s_player: "ተጫዋች", s_payment: "ክፍያ", s_status: "ሁኔታ እና ቀኖች",
     reference: "ደረሰኝ ቁጥር", deposit_id: "የተቀማጭ መለያ", name: "ስም", username: "ዩዘርኔም", tg_id: "ቴሌግራም መለያ",
     phone: "ስልክ", user_id: "የተጠቃሚ መለያ", player_state: "አካውንት", blocked: "🚫 የታገደ", paused: "⏸ የቆመ", active: "🟢 ንቁ",
+    is_blocked: "ታግዷል", yes_blocked: "🚫 አዎ", no_blocked: "✅ አይደለም",
     amount: "መጠን", method: "የክፍያ ዘዴ", to_account: "የተከፈለለት", payer: "ከፋይ (ደረሰኝ)", payer_acc: "የከፋይ አካውንት",
     status: "ሁኔታ", created: "ጥቅም ላይ የዋለበት", credited: "ገቢ የተደረገበት", approved_by: "ያጸደቀው", auto: "በራስ-ሰር (ቦት)",
     rejected: "ውድቅ የተደረገበት", rejected_by: "ውድቅ ያደረገው", reason: "ምክንያት", updated: "መጨረሻ የተቀየረበት", tx: "ግብይት", rule: "የተቀማጭ ደንብ",
@@ -109,7 +111,8 @@ module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, re
     const pm = (lang === "am" ? (d.pm_amharic_name || d.pm_name) : (d.pm_name || d.pm_amharic_name)) || "—";
     const status = t.st[d.status] || esc(d.status || "—");
     const username = await telegramUsername(d.telegram_id);
-    const account = d.user_blocked ? t.blocked : (d.user_active === false ? t.paused : t.active);
+    const account = d.user_active === false ? t.paused : t.active;
+    const blockedState = d.user_blocked === true ? t.yes_blocked : t.no_blocked;
 
     let history = null;
     try {
@@ -132,6 +135,7 @@ module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, re
       row(t.tg_id, d.telegram_id ? `<code>${esc(d.telegram_id)}</code>` : "—"),
       row(t.phone, d.user_phone ? `<code>${esc(d.user_phone)}</code>` : "—"),
       row(t.user_id, `#${esc(d.user_id)}`),
+      row(t.is_blocked, blockedState),
       row(t.player_state, account)
     ];
     if (history) lines.push(row(t.history, history));
