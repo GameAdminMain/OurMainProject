@@ -347,6 +347,8 @@ function ensureApprovalSchema() {
         CREATE INDEX IF NOT EXISTS manual_deposit_requests_status_idx ON public.manual_deposit_requests (status, created_at);
         ALTER TABLE public.manual_deposit_requests ADD COLUMN IF NOT EXISTS claimed_by_id integer;
         ALTER TABLE public.manual_deposit_requests ADD COLUMN IF NOT EXISTS claimed_at timestamptz;
+        -- the amount the PLAYER says they sent (saved when the request is made; amount = what the admin approved)
+        ALTER TABLE public.manual_deposit_requests ADD COLUMN IF NOT EXISTS requested_amount numeric(18,2);
       `);
       // allow admin_role = 'deposit'. Kept separate: if the database user may not change the users table, the modes
       // still work and only giving someone the Deposit Admin role fails (the error is in the log).
@@ -2313,103 +2315,69 @@ async registerUser(telegramId, name, phone) {
     userId
   ) {
 
-    // manual_deposit_requests is created lazily; make sure it exists
+    // manual_deposit_requests is created lazily; make sure it (and requested_amount) exists
     await ensureApprovalSchema();
 
+    // Deposits
+    //   approved = deposits credited to the wallet (auto-verified and admin-approved manual
+    //              ones both end as deposits.status 'completed')
+    //   pending  = manual requests waiting for a deposit admin + deposits rows not finished yet
+    //   rejected = manual requests a deposit admin rejected
+    //   Manual requests use the amount the player said they sent (requested_amount). Requests
+    //   made before that column existed have no amount: they are counted in *_unknown.
+    // Withdrawals: pending = pending/processing, approved, rejected (amount + count each)
     const { rows } =
       await pool.query(
         `
+        WITH
+        dep AS (
+          SELECT
+            COUNT(*) FILTER (WHERE status = 'completed')                        AS approved_count,
+            COALESCE(SUM(amount) FILTER (WHERE status = 'completed'), 0)        AS approved_amount,
+            COUNT(*) FILTER (WHERE status IN ('pending', 'processing'))         AS pending_count,
+            COALESCE(SUM(amount) FILTER (WHERE status IN ('pending', 'processing')), 0) AS pending_amount
+          FROM deposits
+          WHERE user_id = $1
+        ),
+        mdr AS (
+          SELECT
+            COUNT(*) FILTER (WHERE status = 'pending')                                    AS pending_count,
+            COALESCE(SUM(requested_amount) FILTER (WHERE status = 'pending'), 0)          AS pending_amount,
+            COUNT(*) FILTER (WHERE status = 'pending' AND requested_amount IS NULL)       AS pending_unknown,
+            COUNT(*) FILTER (WHERE status = 'rejected')                                   AS rejected_count,
+            COALESCE(SUM(requested_amount) FILTER (WHERE status = 'rejected'), 0)         AS rejected_amount,
+            COUNT(*) FILTER (WHERE status = 'rejected' AND requested_amount IS NULL)      AS rejected_unknown
+          FROM manual_deposit_requests
+          WHERE user_id = $1
+        ),
+        wd AS (
+          SELECT
+            COUNT(*) FILTER (WHERE status IN ('pending', 'processing'))                   AS pending_count,
+            COALESCE(SUM(amount) FILTER (WHERE status IN ('pending', 'processing')), 0)   AS pending_amount,
+            COUNT(*) FILTER (WHERE status = 'approved')                                   AS approved_count,
+            COALESCE(SUM(amount) FILTER (WHERE status = 'approved'), 0)                   AS approved_amount,
+            COUNT(*) FILTER (WHERE status = 'rejected')                                   AS rejected_count,
+            COALESCE(SUM(amount) FILTER (WHERE status = 'rejected'), 0)                   AS rejected_amount
+          FROM withdrawals
+          WHERE user_id = $1
+        )
         SELECT
-
-          -- approved = deposits credited to the wallet (auto-verified and
-          -- admin-approved manual ones both end as deposits.status 'completed')
-          (
-            SELECT COALESCE(
-              SUM(d.amount),
-              0
-            )
-            FROM deposits d
-            WHERE d.user_id = u.id
-              AND d.status = 'completed'
-          ) AS approved_deposit_amount,
-
-          (
-            SELECT COUNT(*)
-            FROM deposits d
-            WHERE d.user_id = u.id
-              AND d.status = 'completed'
-          ) AS approved_deposit_count,
-
-          -- pending = manual requests waiting for a deposit admin
-          -- + deposits rows not finished yet (pending/processing).
-          -- Manual requests have no amount until approved, so only
-          -- the deposits rows add to the amount.
-          (
-            (
-              SELECT COUNT(*)
-              FROM manual_deposit_requests r
-              WHERE r.user_id = u.id
-                AND r.status = 'pending'
-            ) +
-            (
-              SELECT COUNT(*)
-              FROM deposits d
-              WHERE d.user_id = u.id
-                AND d.status IN ('pending', 'processing')
-            )
-          ) AS pending_deposit_count,
-
-          (
-            SELECT COALESCE(
-              SUM(d.amount),
-              0
-            )
-            FROM deposits d
-            WHERE d.user_id = u.id
-              AND d.status IN ('pending', 'processing')
-          ) AS pending_deposit_amount,
-
-          -- rejected = manual requests a deposit admin rejected
-          (
-            SELECT COUNT(*)
-            FROM manual_deposit_requests r
-            WHERE r.user_id = u.id
-              AND r.status = 'rejected'
-          ) AS rejected_deposit_count,
-
-          (
-            SELECT COALESCE(
-              SUM(w.amount),
-              0
-            )
-            FROM withdrawals w
-            WHERE w.user_id = u.id
-              AND w.status = 'approved'
-          ) AS approved_withdrawal_amount,
-
-          (
-            SELECT COALESCE(
-              SUM(w.amount),
-              0
-            )
-            FROM withdrawals w
-            WHERE w.user_id = u.id
-              AND w.status IN ('pending', 'processing')
-          ) AS pending_withdrawal_amount,
-
-          (
-            SELECT COALESCE(
-              SUM(w.amount),
-              0
-            )
-            FROM withdrawals w
-            WHERE w.user_id = u.id
-              AND w.status = 'rejected'
-          ) AS rejected_withdrawal_amount
-
-        FROM users u
+          dep.approved_count                       AS approved_deposit_count,
+          dep.approved_amount                      AS approved_deposit_amount,
+          dep.pending_count + mdr.pending_count    AS pending_deposit_count,
+          dep.pending_amount + mdr.pending_amount  AS pending_deposit_amount,
+          mdr.pending_unknown                      AS pending_deposit_unknown,
+          mdr.rejected_count                       AS rejected_deposit_count,
+          mdr.rejected_amount                      AS rejected_deposit_amount,
+          mdr.rejected_unknown                     AS rejected_deposit_unknown,
+          wd.pending_count                         AS pending_withdrawal_count,
+          wd.pending_amount                        AS pending_withdrawal_amount,
+          wd.approved_count                        AS approved_withdrawal_count,
+          wd.approved_amount                       AS approved_withdrawal_amount,
+          wd.rejected_count                        AS rejected_withdrawal_count,
+          wd.rejected_amount                       AS rejected_withdrawal_amount
+        FROM users u, dep, mdr, wd
         WHERE u.id = $1
-        LIMIT 1
         `,
         [userId]
       );
@@ -2419,53 +2387,27 @@ async registerUser(telegramId, name, phone) {
     }
 
     const r = rows[0];
+    const n = (v) => Number(v || 0);
 
     return {
-      // kept for older callers: now counts approved (completed) deposits only
-      totalDepositAmount:
-        Number(
-          r.approved_deposit_amount || 0
-        ),
+      // kept for older callers: approved (completed) deposits only
+      totalDepositAmount: n(r.approved_deposit_amount),
 
-      approvedDepositAmount:
-        Number(
-          r.approved_deposit_amount || 0
-        ),
+      approvedDepositAmount: n(r.approved_deposit_amount),
+      approvedDepositCount: n(r.approved_deposit_count),
+      pendingDepositAmount: n(r.pending_deposit_amount),
+      pendingDepositCount: n(r.pending_deposit_count),
+      pendingDepositUnknown: n(r.pending_deposit_unknown),
+      rejectedDepositAmount: n(r.rejected_deposit_amount),
+      rejectedDepositCount: n(r.rejected_deposit_count),
+      rejectedDepositUnknown: n(r.rejected_deposit_unknown),
 
-      approvedDepositCount:
-        Number(
-          r.approved_deposit_count || 0
-        ),
-
-      pendingDepositCount:
-        Number(
-          r.pending_deposit_count || 0
-        ),
-
-      pendingDepositAmount:
-        Number(
-          r.pending_deposit_amount || 0
-        ),
-
-      rejectedDepositCount:
-        Number(
-          r.rejected_deposit_count || 0
-        ),
-
-      approvedWithdrawalAmount:
-        Number(
-          r.approved_withdrawal_amount || 0
-        ),
-
-      pendingWithdrawalAmount:
-        Number(
-          r.pending_withdrawal_amount || 0
-        ),
-
-      rejectedWithdrawalAmount:
-        Number(
-          r.rejected_withdrawal_amount || 0
-        )
+      approvedWithdrawalAmount: n(r.approved_withdrawal_amount),
+      approvedWithdrawalCount: n(r.approved_withdrawal_count),
+      pendingWithdrawalAmount: n(r.pending_withdrawal_amount),
+      pendingWithdrawalCount: n(r.pending_withdrawal_count),
+      rejectedWithdrawalAmount: n(r.rejected_withdrawal_amount),
+      rejectedWithdrawalCount: n(r.rejected_withdrawal_count)
     };
   },
 
@@ -6183,10 +6125,12 @@ async approveDeposit(receipt, telegramId) {
   // was shown. Nothing goes into deposits until an admin approves it with the amount that arrived.
   // ------------------------------------------------------------
 
-  async createManualDepositRequest({ telegramId, paymentMethodId, paymentAccountId, reference, message, shownAccountName, shownAccountNumber }) {
+  async createManualDepositRequest({ telegramId, paymentMethodId, paymentAccountId, reference, message, shownAccountName, shownAccountNumber, requestedAmount }) {
     await ensureApprovalSchema();
     const ref = String(reference || "").trim().slice(0, 100);
     if (!ref) throw new Error("Reference is required.");
+    let reqAmount = Math.round(Number(requestedAmount) * 100) / 100;
+    if (!Number.isFinite(reqAmount) || reqAmount <= 0 || reqAmount > 1000000) reqAmount = null;
     const client = await pool.connect();
     try {
       await client.query("BEGIN");
@@ -6202,9 +6146,9 @@ async approveDeposit(receipt, telegramId) {
 
       const { rows } = await client.query(
         `INSERT INTO manual_deposit_requests
-           (user_id, payment_method_id, payment_account_id, reference, message, shown_account_name, shown_account_number)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         RETURNING id, reference`,
+           (user_id, payment_method_id, payment_account_id, reference, message, shown_account_name, shown_account_number, requested_amount)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, reference, requested_amount`,
         [
           user.id,
           paymentMethodId || null,
@@ -6212,7 +6156,8 @@ async approveDeposit(receipt, telegramId) {
           ref,
           message ? String(message).slice(0, 1000) : null,
           shownAccountName ? String(shownAccountName).slice(0, 100) : null,
-          shownAccountNumber ? String(shownAccountNumber).slice(0, 100) : null
+          shownAccountNumber ? String(shownAccountNumber).slice(0, 100) : null,
+          reqAmount
         ]
       );
       await client.query("COMMIT");

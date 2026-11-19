@@ -259,6 +259,7 @@ function clearPendingState(telegramId)
   pendingRemovedAccountSearch.delete(telegramId);
   pendingDepositAmount.delete(String(telegramId));
   pendingDepositReason.delete(String(telegramId));
+  pendingManualDepositRef.delete(String(telegramId));
   delete pendingAdminWithdrawal[telegramId];  
   delete pendingAdminAccountEdit[telegramId];
   delete pendingAdminAccountDelete[telegramId];  
@@ -3750,6 +3751,11 @@ bot.callbackQuery(
 // ADMIN USER FINANCIAL STATISTICS
 // ============================================================
 
+// one line of the user financial statistics: "⏳ Pending: *150.00 ETB* · 3" (+ "· ❔2" = requests with no amount saved)
+function statLine(label, amount, count, unknown = 0) {
+  return `${label}: *${Number(amount || 0).toFixed(2)} ETB* · ${count}` + (unknown > 0 ? ` · ❔${unknown}` : "") + `\n`;
+}
+
 bot.callbackQuery(
   "admin_user_financial_statistics",
   async (ctx) => {
@@ -6994,6 +7000,7 @@ bot.callbackQuery(/^payment_(\d+)$/, async (ctx) =>
         if (paymentaccount)
         {
             pendingDeposit[ctx.from.id] = true;            
+            pendingManualDepositRef.delete(String(ctx.from.id));   // a new deposit starts from the reference again
             //if (!paymentaccount) 
            // {
            //     return respond("reply", ctx, "❌ የ" + paymentMethod.amharic_Name + " አካውንት አማራጭ አልተገኘም።");
@@ -9139,6 +9146,14 @@ const APPROVAL_TEXTS = {
     en: (ref) => `⏳ *Your deposit was received.*\n\n🧾 Reference: \`${ref}\`\n\nAn admin will check the payment and approve it shortly. You will get a message when it is added to your balance.`,
     am: (ref) => `⏳ *የገቢ ጥያቄዎ ደርሷል።*\n\n🧾 የግብይት ቁጥር፦ \`${ref}\`\n\nአስተዳዳሪ ክፍያውን አረጋግጦ በቅርቡ ያጸድቀዋል። ወደ ሂሳብዎ ሲጨመር መልእክት ይደርስዎታል።`
   },
+  dep_manual_ask_amount: {
+    en: (ref) => `🧾 Reference: \`${ref}\`\n\n💰 *How much did you send?*\nType the amount in ETB, for example \`100\`.`,
+    am: (ref) => `🧾 የግብይት ቁጥር፦ \`${ref}\`\n\n💰 *ስንት ብር ላኩ?*\nመጠኑን በብር ይጻፉ፤ ለምሳሌ \`100\`።`
+  },
+  dep_manual_bad_amount: {
+    en: () => `❌ Please type the amount as a number, for example \`100\`.`,
+    am: () => `❌ እባክዎ መጠኑን በቁጥር ይጻፉ፤ ለምሳሌ \`100\`።`
+  },
   dep_approved_user: {
     en: (amount, bal) => `✅ *Your deposit was approved!*\n\n💰 ${amount} ETB was added to your balance.\n💰 Play balance: *${bal} ETB*`,
     am: (amount, bal) => `✅ *የገቢ ጥያቄዎ ጸድቋል!*\n\n💰 ${amount} ብር ወደ ሂሳብዎ ተጨምሯል።\n💰 የመጫወቻ ሂሳብ፦ *${bal} ETB*`
@@ -9167,6 +9182,25 @@ const APPROVAL_MODE_LABEL = { auto: "🤖 Automatic", manual: "👤 Manual" };
 // admin telegramId -> manual deposit request id: the admin is typing the amount / a reject reason for it
 const pendingDepositAmount = new Map();
 const pendingDepositReason = new Map();
+// player telegramId -> { ref, message }: manual mode, the reference is in and we are waiting for the amount they sent
+const pendingManualDepositRef = new Map();
+
+// amount from a pasted telebirr / M-Pesa SMS: "ETB 100.00", "100.00 ETB", "100 Birr", "100 ብር" (first match = the
+// transferred amount; the balance comes later in those SMS). null when the player only sent the reference.
+function parseSmsAmount(text) {
+  const t = String(text || "").trim();
+  if (!/\s/.test(t)) return null;   // a bare reference such as "CK12ETB34" is never an amount
+  const m = t.match(/(?:\bETB|\bBirr|ብር)\s*([0-9][0-9,]*(?:\.[0-9]{1,2})?)\b/i) ||
+            t.match(/\b([0-9][0-9,]*(?:\.[0-9]{1,2})?)\s*(?:ETB\b|Birr\b|ብር)/i);
+  if (!m) return null;
+  const v = Number(m[1].replace(/,/g, ""));
+  return Number.isFinite(v) && v > 0 && v <= 1000000 ? v : null;
+}
+
+function parseTypedAmount(text) {
+  const v = Number(String(text || "").replace(/,/g, "").replace(/\s*(etb|birr|ብር)\s*$/i, "").trim());
+  return Number.isFinite(v) && v > 0 && v <= 1000000 ? Math.round(v * 100) / 100 : null;
+}
 
 async function getApprovalModesSafe() {
   try { return await db.getApprovalModes(); }
@@ -9179,23 +9213,46 @@ async function getApprovalModesSafe() {
 // deposit approval mode = manual: no links.et check. The reference, payment method and the account the player was
 // shown are saved for a deposit admin, who checks the account by hand.
 async function handleManualDepositText(ctx, telegramId, text, lang) {
+  const key = String(telegramId);
   const paymentMethod = ctx.session.paymentMethod || {};
   const shown = ctx.session.depositAccount || {};
+
+  // step 2: the reference is in, this message is the amount the player sent
+  const waiting = pendingManualDepositRef.get(key);
+  if (waiting) {
+    const amount = parseTypedAmount(text);
+    if (!amount) return respond("reply", ctx, tr(lang, "dep_manual_bad_amount"), { parse_mode: "Markdown" });
+    pendingManualDepositRef.delete(key);
+    return saveManualDepositRequest(ctx, telegramId, lang, paymentMethod, shown, waiting.ref, waiting.message, amount);
+  }
+
+  // step 1: the reference (or the whole SMS)
   const n = String(paymentMethod.name || "").toLowerCase();
   const typeName = n === "telebirr" ? "telebirr" : (n === "m-pesa" || n === "mpesa") ? "m-pesa" : null;
   let ref = null;
   try { if (typeName) ref = await extractInvoiceNumber(typeName, text); } catch (_) {}
   if (!ref && /^[A-Za-z0-9-]{4,60}$/.test(text.trim())) ref = text.trim();
   if (!ref) return respond("reply", ctx, tr(lang, "dep_txn_not_found"));
+  ref = String(ref).toUpperCase();
 
+  const smsAmount = parseSmsAmount(text);
+  if (smsAmount) return saveManualDepositRequest(ctx, telegramId, lang, paymentMethod, shown, ref, text, smsAmount);
+
+  // only the reference was sent: ask how much (pendingDeposit stays set, so the next message comes back here)
+  pendingManualDepositRef.set(key, { ref, message: text });
+  return respond("reply", ctx, tr(lang, "dep_manual_ask_amount", ref), { parse_mode: "Markdown" });
+}
+
+async function saveManualDepositRequest(ctx, telegramId, lang, paymentMethod, shown, ref, message, amount) {
   const r = await db.createManualDepositRequest({
     telegramId,
     paymentMethodId: paymentMethod.id,
     paymentAccountId: shown.id,
-    reference: String(ref).toUpperCase(),
-    message: text,
+    reference: ref,
+    message,
     shownAccountName: shown.name,
-    shownAccountNumber: shown.number
+    shownAccountNumber: shown.number,
+    requestedAmount: amount
   });
   clearPendingState(telegramId);
   // no alert to the admins: the request shows under ⏳ Pending -> 📥 Deposits
@@ -9208,6 +9265,7 @@ function manualDepositText(r) {
     `📥 *Deposit request #${r.id}*\n` +
     `👤 Player: *${mdEsc(r.user_name || "Unknown")}*` + (r.user_phone ? ` (\`${displayAccountNumber(r.user_phone)}\`)` : "") + `\n` +
     `🧾 Reference: \`${r.reference}\`\n` +
+    (r.requested_amount != null ? `💰 Player says they sent: *${Number(r.requested_amount).toFixed(2)} ETB*\n` : "") +
     `💳 Method: ${r.pm_emoji || ""} *${mdEsc(pm)}*\n` +
     `📱 Account shown to player: \`${displayAccountNumber(r.shown_account_number) || "—"}\` ${mdEsc(r.shown_account_name || "")}\n` +
     `📅 ${bnWhen(r.created_at)}\n`;
@@ -11485,38 +11543,18 @@ bot.on(
             }\`\n\n` +
 
             `💎 *Deposits*\n` +
-
-            `⏳ Pending: *${
-              stats.pendingDepositCount
-            }*${
-              stats.pendingDepositAmount > 0
-                ? ` (${stats.pendingDepositAmount.toFixed(2)} ETB)`
+            statLine("⏳ Pending", stats.pendingDepositAmount, stats.pendingDepositCount, stats.pendingDepositUnknown) +
+            statLine("✅ Approved", stats.approvedDepositAmount, stats.approvedDepositCount) +
+            statLine("❌ Rejected", stats.rejectedDepositAmount, stats.rejectedDepositCount, stats.rejectedDepositUnknown) +
+            `\n🏧 *Withdrawals*\n` +
+            statLine("⏳ Pending", stats.pendingWithdrawalAmount, stats.pendingWithdrawalCount) +
+            statLine("✅ Approved", stats.approvedWithdrawalAmount, stats.approvedWithdrawalCount) +
+            statLine("❌ Rejected", stats.rejectedWithdrawalAmount, stats.rejectedWithdrawalCount) +
+            (
+              stats.pendingDepositUnknown + stats.rejectedDepositUnknown > 0
+                ? `\n_❔ = requests from before amounts were saved (amount unknown, counted but not in the ETB total)._`
                 : ""
-            }\n` +
-
-            `✅ Approved: *${
-              stats.approvedDepositAmount.toFixed(2)
-            } ETB* (${
-              stats.approvedDepositCount
-            })\n` +
-
-            `❌ Rejected: *${
-              stats.rejectedDepositCount
-            }*\n\n` +
-
-            `🏧 *Withdrawals*\n` +
-
-            `⏳ Pending: *${
-              stats.pendingWithdrawalAmount.toFixed(2)
-            } ETB*\n` +
-
-            `✅ Approved: *${
-              stats.approvedWithdrawalAmount.toFixed(2)
-            } ETB*\n` +
-
-            `❌ Rejected: *${
-              stats.rejectedWithdrawalAmount.toFixed(2)
-            } ETB*`;
+            );
 
           return respond("reply", ctx, 
 
