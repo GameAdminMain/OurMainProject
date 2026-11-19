@@ -2747,6 +2747,7 @@ async function adminUserCard(user) {
     `👤 *USER FOUND*\n\n` +
     `👤 Name: *${mdEsc(user.name || "Unknown")}*\n` +
     `📱 Phone: \`${user.phone || "Not available"}\`\n` +
+    `📅 Registered: ${user.created_at ? `*${bnWhen(user.created_at)}* (${admAgo(user.created_at)})` : "not available"}\n` +
     `🔐 Blocked: ${user.is_blocked ? "🚫 Yes" : "✅ No"}\n` +
     `📌 Status: ${user.is_active ? "🟢 Active" : "⚪ Inactive"}\n` +
     `🕒 Last online: ${act ? (act.last ? `*${bnWhen(act.last)}* (${admAgo(act.last)})` : "never") : "not available"}`;

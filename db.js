@@ -1212,7 +1212,8 @@ async getActiveStakes() {
           is_active,
           is_blocked,
           is_admin,
-          admin_role          
+          admin_role,
+          created_at
         FROM users
         WHERE ${match.sql}
           AND is_active = TRUE
@@ -1411,7 +1412,7 @@ async getActiveStakes() {
   // one user by users.id, same columns as getUserByPhoneForAdmin (used when an admin screen is re-opened)
   async getUserByIdForAdmin(userId) {
     const { rows } = await pool.query(
-      `SELECT id, telegram_id, name, phone, is_active, is_blocked, is_admin, admin_role
+      `SELECT id, telegram_id, name, phone, is_active, is_blocked, is_admin, admin_role, created_at
        FROM users WHERE id = $1 AND is_active = TRUE LIMIT 1`,
       [userId]
     );
