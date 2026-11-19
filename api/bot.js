@@ -11484,11 +11484,25 @@ bot.on(
               text)
             }\`\n\n` +
 
-            `💎 *Total Deposits*\n` +
+            `💎 *Deposits*\n` +
 
-            `*${
-              stats.totalDepositAmount.toFixed(2)
-            } ETB*\n\n` +
+            `⏳ Pending: *${
+              stats.pendingDepositCount
+            }*${
+              stats.pendingDepositAmount > 0
+                ? ` (${stats.pendingDepositAmount.toFixed(2)} ETB)`
+                : ""
+            }\n` +
+
+            `✅ Approved: *${
+              stats.approvedDepositAmount.toFixed(2)
+            } ETB* (${
+              stats.approvedDepositCount
+            })\n` +
+
+            `❌ Rejected: *${
+              stats.rejectedDepositCount
+            }*\n\n` +
 
             `🏧 *Withdrawals*\n` +
 

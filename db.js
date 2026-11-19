@@ -2313,10 +2313,51 @@ async registerUser(telegramId, name, phone) {
     userId
   ) {
 
+    // manual_deposit_requests is created lazily; make sure it exists
+    await ensureApprovalSchema();
+
     const { rows } =
       await pool.query(
         `
         SELECT
+
+          -- approved = deposits credited to the wallet (auto-verified and
+          -- admin-approved manual ones both end as deposits.status 'completed')
+          (
+            SELECT COALESCE(
+              SUM(d.amount),
+              0
+            )
+            FROM deposits d
+            WHERE d.user_id = u.id
+              AND d.status = 'completed'
+          ) AS approved_deposit_amount,
+
+          (
+            SELECT COUNT(*)
+            FROM deposits d
+            WHERE d.user_id = u.id
+              AND d.status = 'completed'
+          ) AS approved_deposit_count,
+
+          -- pending = manual requests waiting for a deposit admin
+          -- + deposits rows not finished yet (pending/processing).
+          -- Manual requests have no amount until approved, so only
+          -- the deposits rows add to the amount.
+          (
+            (
+              SELECT COUNT(*)
+              FROM manual_deposit_requests r
+              WHERE r.user_id = u.id
+                AND r.status = 'pending'
+            ) +
+            (
+              SELECT COUNT(*)
+              FROM deposits d
+              WHERE d.user_id = u.id
+                AND d.status IN ('pending', 'processing')
+            )
+          ) AS pending_deposit_count,
 
           (
             SELECT COALESCE(
@@ -2325,7 +2366,16 @@ async registerUser(telegramId, name, phone) {
             )
             FROM deposits d
             WHERE d.user_id = u.id
-          ) AS total_deposit_amount,
+              AND d.status IN ('pending', 'processing')
+          ) AS pending_deposit_amount,
+
+          -- rejected = manual requests a deposit admin rejected
+          (
+            SELECT COUNT(*)
+            FROM manual_deposit_requests r
+            WHERE r.user_id = u.id
+              AND r.status = 'rejected'
+          ) AS rejected_deposit_count,
 
           (
             SELECT COALESCE(
@@ -2371,9 +2421,35 @@ async registerUser(telegramId, name, phone) {
     const r = rows[0];
 
     return {
+      // kept for older callers: now counts approved (completed) deposits only
       totalDepositAmount:
         Number(
-          r.total_deposit_amount || 0
+          r.approved_deposit_amount || 0
+        ),
+
+      approvedDepositAmount:
+        Number(
+          r.approved_deposit_amount || 0
+        ),
+
+      approvedDepositCount:
+        Number(
+          r.approved_deposit_count || 0
+        ),
+
+      pendingDepositCount:
+        Number(
+          r.pending_deposit_count || 0
+        ),
+
+      pendingDepositAmount:
+        Number(
+          r.pending_deposit_amount || 0
+        ),
+
+      rejectedDepositCount:
+        Number(
+          r.rejected_deposit_count || 0
         ),
 
       approvedWithdrawalAmount:
