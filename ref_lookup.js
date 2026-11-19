@@ -63,6 +63,13 @@ function esc(t) {
   return String(t ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+// display only: Ethiopian numbers without the country code (251911234567 / +251911234567 -> 0911234567)
+function localPhone(n) {
+  const s = String(n ?? "").trim();
+  const m = s.replace(/[\s\-()]/g, "").match(/^(?:\+?251)(\d{9})$/);
+  return m ? "0" + m[1] : s;
+}
+
 function when(ts) {
   if (!ts) return "—";
   try {
@@ -133,7 +140,7 @@ module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, re
       row(t.name, `<b>${esc(d.user_name || "—")}</b>`),
       row(t.username, esc(username || "—")),
       row(t.tg_id, d.telegram_id ? `<code>${esc(d.telegram_id)}</code>` : "—"),
-      row(t.phone, d.user_phone ? `<code>${esc(d.user_phone)}</code>` : "—"),
+      row(t.phone, d.user_phone ? `<code>${esc(localPhone(d.user_phone))}</code>` : "—"),
       row(t.user_id, `#${esc(d.user_id)}`),
       row(t.is_blocked, blockedState),
       row(t.player_state, account)
@@ -143,9 +150,9 @@ module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, re
       "",
       `<b>${t.s_payment}</b>`,
       row(t.method, `${d.pm_emoji ? d.pm_emoji + " " : ""}${esc(pm)}`),
-      row(t.to_account, `${esc(d.pa_name || "—")}${d.pa_number ? ` · <code>${esc(d.pa_number)}</code>` : ""}`),
+      row(t.to_account, `${esc(d.pa_name || "—")}${d.pa_number ? ` · <code>${esc(localPhone(d.pa_number))}</code>` : ""}`),
       row(t.payer, esc(d.depositor_name || "—")),
-      row(t.payer_acc, d.depositor_account ? `<code>${esc(d.depositor_account)}</code>` : "—"),
+      row(t.payer_acc, d.depositor_account ? `<code>${esc(localPhone(d.depositor_account))}</code>` : "—"),
       "",
       `<b>${t.s_status}</b>`,
       row(t.created, when(d.created_at))
@@ -176,7 +183,7 @@ module.exports = function setupRefLookup({ bot, db, getCurrentAdmin, getLang, re
         `<b>${t.request_id} #${r.id}</b> · ${t.st[r.status] || esc(r.status)}`,
         `${t.name}: ${esc(r.user_name || "—")} (<code>${esc(r.telegram_id)}</code>)`,
         `${t.method}: ${esc(r.pm_emoji || "")} ${esc(r.pm_name || "—")}`,
-        `${t.shown_account}: <code>${esc(r.shown_account_number || "—")}</code> ${esc(r.shown_account_name || "")}`,
+        `${t.shown_account}: <code>${esc(localPhone(r.shown_account_number) || "—")}</code> ${esc(r.shown_account_name || "")}`,
         `${t.created}: ${when(r.created_at)}`
       );
       if (r.amount != null) lines.push(`${t.amount}: ${money(r.amount)}`);

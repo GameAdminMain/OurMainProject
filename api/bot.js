@@ -137,7 +137,7 @@ function frUserScreen(status, userId) {
   const text =
     `💳 *Money restrictions*\n\n` +
     `👤 *${mdEsc(t.name || "Unknown")}*\n` +
-    `📱 \`${t.phone || "N/A"}\`\n\n` +
+    `📱 \`${displayAccountNumber(t.phone) || "N/A"}\`\n\n` +
     ["d", "w", "tm", "tp"].map(line).join("\n") +
     `\n\n✅ = allowed   🚫 = blocked for this user\n` +
     `Tap a button to switch it. The user gets a Telegram message.`;
@@ -1454,7 +1454,7 @@ const HIST_KINDS = {
     load: (tid, p) => db.getUserWithdrawalHistory(tid, p, HIST_PAGE_SIZE),
     row: (r, n, lang) =>
       `<b>${n}.</b> ${histIcon(r.status)} <b>${histMoney(r.amount)} ETB</b> · ${histMethod(r, lang)}\n` +
-      `      📱 <code>${htmlEsc(r.account_number || "—")}</code> · ${htmlEsc(r.when_text)}` +
+      `      📱 <code>${htmlEsc(displayAccountNumber(r.account_number) || "—")}</code> · ${htmlEsc(r.when_text)}` +
       (String(r.status) === "rejected" && r.rejection_reason ? `\n      ↳ ${htmlEsc(r.rejection_reason)}` : "")
   },
   tr: {
@@ -1464,7 +1464,7 @@ const HIST_KINDS = {
     row: (r, n, lang) =>
       `<b>${n}.</b> ${r.sent ? tr(lang, "hist_sent") : tr(lang, "hist_received")} <b>${histMoney(r.amount)} ETB</b> · ${r.wallet_type === "main" ? tr(lang, "hist_main") : tr(lang, "hist_play")}` +
       (String(r.status) !== "completed" ? ` ${histIcon(r.status)}` : "") + `\n` +
-      `      👤 ${htmlEsc(r.other_name || "—")} · 📱 <code>${htmlEsc(r.other_phone || "—")}</code> · ${htmlEsc(r.when_text)}`
+      `      👤 ${htmlEsc(r.other_name || "—")} · 📱 <code>${htmlEsc(displayAccountNumber(r.other_phone) || "—")}</code> · ${htmlEsc(r.when_text)}`
   },
   bn: {
     titleKey: "hist_bn_title",
@@ -2746,7 +2746,7 @@ async function adminUserCard(user) {
   let text =
     `👤 *USER FOUND*\n\n` +
     `👤 Name: *${mdEsc(user.name || "Unknown")}*\n` +
-    `📱 Phone: \`${user.phone || "Not available"}\`\n` +
+    `📱 Phone: \`${displayAccountNumber(user.phone) || "Not available"}\`\n` +
     `📅 Registered: ${user.created_at ? `*${bnWhen(user.created_at)}* (${admAgo(user.created_at)})` : "not available"}\n` +
     `🔐 Blocked: ${user.is_blocked ? "🚫 Yes" : "✅ No"}\n` +
     `📌 Status: ${user.is_active ? "🟢 Active" : "⚪ Inactive"}\n` +
@@ -2821,7 +2821,7 @@ async function adminUserHistoryView(userId, kind, page) {
   const u = await db.getUserByIdForAdmin(userId);
 
   let text = `${isDep ? "📥 *Deposit history*" : "📤 *Withdrawal history*"}\n` +
-    `👤 ${mdEsc(u?.name || "User")} · \`${u?.phone || "—"}\`\n` +
+    `👤 ${mdEsc(u?.name || "User")} · \`${displayAccountNumber(u?.phone) || "—"}\`\n` +
     `Page *${h.page}* of *${h.pages}* · ${h.total} total\n`;
 
   if (!h.rows.length) {
@@ -2837,7 +2837,7 @@ async function adminUserHistoryView(userId, kind, page) {
         if (r.status === "rejected" && r.rejection_reason) text += `    📝 Reason: ${mdEsc(r.rejection_reason)}\n`;
         if (r.depositor_account) text += `    📲 Sent from: \`${r.depositor_account}\`${r.depositor_name ? ` (${mdEsc(r.depositor_name)})` : ""}\n`;
       } else {
-        text += `    🏦 Account: \`${r.account_number || "—"}\`\n`;
+        text += `    🏦 Account: \`${displayAccountNumber(r.account_number) || "—"}\`\n`;
       }
       text += `    🕒 ${r.when_text}\n`;
     });
@@ -2869,7 +2869,7 @@ async function adminUserBonusView(userId, page) {
   catch (e) { console.error("getAdminUserMoneySummary:", e.message); }
 
   let text = `🎁 *Bonus history*\n` +
-    `👤 ${mdEsc(u?.name || "User")} · \`${u?.phone || "—"}\`\n`;
+    `👤 ${mdEsc(u?.name || "User")} · \`${displayAccountNumber(u?.phone) || "—"}\`\n`;
   if (m) text += `🎁 Bonus wallet now: *${admEtb(m.bonusBalance)}* ETB · Total received: *${m.bonusReceivedCount}* time(s) · ${admEtb(m.bonusTotal)} ETB\n`;
   text += `Page *${h.page}* of *${h.pages}* · ${h.total} total\n`;
 
@@ -3075,7 +3075,7 @@ bot.callbackQuery(
 
         `👤 Name: *${mdEsc(updatedUser.name || "Unknown")}*\n` +
 
-        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
+        `📱 Phone: \`${displayAccountNumber(updatedUser.phone) || "Not available"}\`\n\n` +
 
         `The user can no longer access the bot.`,
 
@@ -3187,7 +3187,7 @@ bot.callbackQuery(
       await respond("edit", ctx, 
         `✅ *Admin Role Updated*\n\n` +
         `👤 Name: *${mdEsc(updatedUser.name || "Unknown")}*\n` +
-        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
+        `📱 Phone: \`${displayAccountNumber(updatedUser.phone) || "Not available"}\`\n\n` +
         `🔐 New Role: *${roleNames[role]}*`,
         {
           parse_mode: "Markdown",
@@ -3272,7 +3272,7 @@ bot.callbackQuery(
       await respond("edit", ctx, 
         `🚫 *Admin Rights Removed*\n\n` +
         `👤 Name: *${mdEsc(updatedUser.name || "Unknown")}*\n` +
-        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
+        `📱 Phone: \`${displayAccountNumber(updatedUser.phone) || "Not available"}\`\n\n` +
         `The user is now a normal user.`,
         {
           parse_mode: "Markdown",
@@ -3370,7 +3370,7 @@ bot.callbackQuery(
 
         `👤 Name: *${mdEsc(updatedUser.name || "Unknown")}*\n` +
 
-        `📱 Phone: \`${updatedUser.phone || "Not available"}\`\n\n` +
+        `📱 Phone: \`${displayAccountNumber(updatedUser.phone) || "Not available"}\`\n\n` +
 
         `The user can access the bot again.`,
 
@@ -3477,7 +3477,7 @@ bot.callbackQuery(/^admin_top_(d|w)_(all|30|7)$/, async (ctx) => {
     const body = rows.length
       ? rows.map((r, i) =>
           `${medals[i] || `${i + 1}.`} <b>${htmlEsc(r.name || "Unknown")}</b>\n` +
-          `    📱 <code>${htmlEsc(r.phone || "N/A")}</code>\n` +
+          `    📱 <code>${htmlEsc(displayAccountNumber(r.phone) || "N/A")}</code>\n` +
           `    💰 <b>${histMoney(r.total)} ETB</b> · ${r.n} ${kind === "d" ? "deposit" : "withdrawal"}${r.n === 1 ? "" : "s"}\n` +
           `    🕒 ${lastLabel}: ${htmlEsc(r.last_at || "—")}`
         ).join("\n\n")
@@ -3634,7 +3634,7 @@ bot.callbackQuery(
               `*${account.accountName}*\n`;
 
             message +=
-              `📱 Account: \`${account.accountNumber}\`\n`;
+              `📱 Account: \`${displayAccountNumber(account.accountNumber)}\`\n`;
 
             message +=
               `💳 Method: *${account.paymentMethodName}*\n`;
@@ -4010,7 +4010,7 @@ async function showAdminAccounts(ctx) {
         }
 
         message +=
-          `📱 Account: \`${account.account_number}\`\n` +
+          `📱 Account: \`${displayAccountNumber(account.account_number)}\`\n` +
           `💰 Balance: *${account.balance} ETB*\n` +
           `📌 Status: ${activeStatus}\n\n`;
       });
@@ -4528,7 +4528,7 @@ bot.callbackQuery(/^admin_account_rmc_(\d+)$/, async (ctx) => {
     const acc = await db.getPaymentAccountByIdForAdmin(id);
     if (!acc) return respond("reply", ctx, "❌ Payment account not found.");
     await respond("edit", ctx, 
-      `🗑 <b>Remove this account?</b>\n\n<b>${htmlEsc(acc.account_name)}</b>\n<code>${htmlEsc(acc.account_number)}</code>\n\n` +
+      `🗑 <b>Remove this account?</b>\n\n<b>${htmlEsc(acc.account_name)}</b>\n<code>${htmlEsc(displayAccountNumber(acc.account_number))}</code>\n\n` +
       `It will disappear from the list and players will no longer see it. You can bring it back later with <b>Restore a removed account</b> by searching its number.`,
       {
         parse_mode: "HTML",
@@ -4586,7 +4586,7 @@ async function removedAccountSearchHook(ctx, telegramId, text) {
   const body = rows.map((r) =>
     `${r.pm_emoji || "💳"} <b>${htmlEsc(r.account_name)}</b>\n` +
     `${htmlEsc(r.pm_amharic_name || r.pm_name || "")}\n` +
-    `<code>${htmlEsc(r.account_number)}</code> · ${htmlEsc(r.balance)} ETB · ${r.is_active ? "🟢 active" : "🔴 inactive"}`
+    `<code>${htmlEsc(displayAccountNumber(r.account_number))}</code> · ${htmlEsc(r.balance)} ETB · ${r.is_active ? "🟢 active" : "🔴 inactive"}`
   ).join("\n\n");
   await respond("reply", ctx, `🔎 <b>Removed accounts found</b>\n\n${body}\n\nTap one to restore it.`, {
     parse_mode: "HTML", reply_markup: { inline_keyboard: kb }
@@ -4743,7 +4743,7 @@ async function showAdminAccountEditConfirmation(
 
     `👤 Name:\n*${pending.accountName}*\n\n` +
 
-    `📱 Account Number:\n\`${pending.accountNumber}\`\n\n` +
+    `📱 Account Number:\n\`${displayAccountNumber(pending.accountNumber)}\`\n\n` +
 
     `💰 Balance:\n*${pending.balance} ETB*\n\n` +
 
@@ -4840,7 +4840,7 @@ bot.callbackQuery(
         "✅ *PAYMENT ACCOUNT UPDATED*\n\n" +
 
         `👤 Name: *${result.account_name}*\n` +
-        `📱 Account: \`${result.account_number}\`\n` +
+        `📱 Account: \`${displayAccountNumber(result.account_number)}\`\n` +
         `💰 Balance: *${result.balance} ETB*\n\n` +
 
         "The account has been updated successfully.",
@@ -5032,7 +5032,7 @@ bot.on("message:contact", async (ctx) => {
     clearPendingState(telegramId);
 
         await respond("reply", ctx, 
-      tr(lang, "reg_done", mdEsc(user.name), phone),
+      tr(lang, "reg_done", mdEsc(user.name), displayAccountNumber(phone)),
       { parse_mode: "Markdown", reply_markup: { remove_keyboard: true } }
     );
 
@@ -5096,7 +5096,7 @@ async function showBalance(
 
   );*/
 
-  const text = await T(ctx, "balance_text", userwallets);
+  const text = await T(ctx, "balance_text", { ...userwallets, phone: displayAccountNumber(userwallets.phone) });
 
   await respond("reply", ctx, text, {
     parse_mode: "HTML",
@@ -5222,7 +5222,7 @@ async function notifyTransferReceiver({
   const message = tr(rLang, "tr_received", {
     amount: formatTransferAmount(amount),
     walletName: getWalletDisplayName(walletType, rLang),
-    senderName, senderPhone, transactionId
+    senderName, senderPhone: displayAccountNumber(senderPhone), transactionId
   });
 
   try {
@@ -5992,7 +5992,7 @@ bot.callbackQuery(
     const lang = await getLang(telegramId);
 
     let message =
-      tr(lang, "tr_recipient_head", getWalletDisplayName(state.walletType, lang), state.receiverName, state.receiverPhone) +
+      tr(lang, "tr_recipient_head", getWalletDisplayName(state.walletType, lang), state.receiverName, displayAccountNumber(state.receiverPhone)) +
       `💰 ${tr(lang, "tr_l_available")}: *${formatTransferAmount(limits.balance)}*\n` +
       `📌 ${tr(lang, "tr_l_min")}: *${formatTransferAmount(limits.minimum_transfer_amount)}*\n`;
 
@@ -6058,7 +6058,7 @@ bot.callbackQuery(
     const lang = await getLang(telegramId);
 
     await respond("edit", ctx, 
-      tr(lang, "tr_change_text", state.receiverName, state.receiverPhone, getWalletDisplayName(state.walletType, lang), formatTransferAmount(state.limits.balance), formatTransferAmount(state.limits.minimum_transfer_amount),
+      tr(lang, "tr_change_text", state.receiverName, displayAccountNumber(state.receiverPhone), getWalletDisplayName(state.walletType, lang), formatTransferAmount(state.limits.balance), formatTransferAmount(state.limits.minimum_transfer_amount),
         (state.limits.maximum_transfer_amount !== null && state.limits.maximum_transfer_amount !== undefined) ? formatTransferAmount(state.limits.maximum_transfer_amount) : null),
       {
         parse_mode: "Markdown",
@@ -6246,7 +6246,7 @@ bot.callbackQuery(
       // --------------------------------------------------------
 
       let message =
-        tr(lang, "tr_retry_text", state.receiverName, state.receiverPhone, getWalletDisplayName(state.walletType, lang),
+        tr(lang, "tr_retry_text", state.receiverName, displayAccountNumber(state.receiverPhone), getWalletDisplayName(state.walletType, lang),
           formatTransferAmount(balance), formatTransferAmount(minimumRemaining), formatTransferAmount(minimum), formatTransferAmount(maximumTransferable),
           maximum !== null ? formatTransferAmount(maximum) : null);
 
@@ -6480,7 +6480,7 @@ await notifyTransferReceiver({
         );
 
       let successMessage =
-                tr(lang, "tr_success_head", getWalletDisplayName(state.walletType, lang), result.receiver_name || state.receiverName, state.receiverPhone, formatTransferAmount(amount));
+                tr(lang, "tr_success_head", getWalletDisplayName(state.walletType, lang), result.receiver_name || state.receiverName, displayAccountNumber(state.receiverPhone), formatTransferAmount(amount));
 
       if (
         result.sender_balance_after !==
@@ -6779,7 +6779,7 @@ bot.callbackQuery(
         );
 
       let successMessage =
-                tr(lang, "tr_success_head", getWalletDisplayName(state.walletType, lang), result.receiver_name || state.receiverName, state.receiverPhone, formatTransferAmount(amount));
+                tr(lang, "tr_success_head", getWalletDisplayName(state.walletType, lang), result.receiver_name || state.receiverName, displayAccountNumber(state.receiverPhone), formatTransferAmount(amount));
 
       if (
         result.sender_balance_after !==
@@ -7540,7 +7540,7 @@ bot.callbackQuery(
 
           {
             text:
-              `${account.account_number} — ` +
+              `${displayAccountNumber(account.account_number)} — ` +
               `${account.balance || ""}`,
 
             callback_data:
@@ -7759,7 +7759,7 @@ if (claimNew) {
         adminState.paymentAccount.pm_name ||
         "Unknown"
       }*\n` +
-      `📱 Payment Account: \`${adminState.paymentAccount.account_number}\`\n` +
+      `📱 Payment Account: \`${displayAccountNumber(adminState.paymentAccount.account_number)}\`\n` +
       `📱 Account Name: \`${adminState.paymentAccount.account_name}\`\n` +
       `💵Account Balance: \`${adminState.paymentAccount.balance} ETB\`\n` +
       `⏱ Claim expires in: *5 minutes*\n` +
@@ -7832,7 +7832,7 @@ if (claimNew) {
           (withdrawal.needs_review ? `⚠️ *REVIEW: ${mdEsc((withdrawal.risk_flags || []).join(", ") || "flagged")}*\n` : "") +
           `👤 User: *${mdEsc(withdrawal.name || "Unknown")}*\n` +
           `💰 Amount: *${withdrawal.amount} ETB*\n` +
-          `📱 Account: \`${withdrawal.account_number}\`\n` +
+          `📱 Account: \`${displayAccountNumber(withdrawal.account_number)}\`\n` +
           `👤 Account name: *${mdEsc(withdrawal.account_name || "—")}*\n` + "\n";
 
       }
@@ -8042,7 +8042,7 @@ bot.callbackQuery("admin_refresh_withdrawals", async (ctx) => {
         `*${index + 1}. Withdrawal #${withdrawal.id}*\n` +
         `👤 User: *${mdEsc(withdrawal.name || "Unknown")}*\n` +
         `💰 Amount: *${withdrawal.amount} ETB*\n` +
-        `📱 Account: \`${withdrawal.account_number}\`\n` +
+        `📱 Account: \`${displayAccountNumber(withdrawal.account_number)}\`\n` +
         `👤 Account name: *${mdEsc(withdrawal.account_name || "—")}*\n` + "\n";
     });
 
@@ -8169,7 +8169,7 @@ bot.callbackQuery(
 
               `💳 ${w.payment_method_amharic || w.payment_method || "Unknown"}\n` +
 
-              `📱 \`${w.account_number}\`\n` +
+              `📱 \`${displayAccountNumber(w.account_number)}\`\n` +
 
               `👤 Account name: ${w.account_name || "—"}\n` +
 
@@ -8414,11 +8414,11 @@ await respond("reply", ctx,
 
   `💰 Amount: *${result.amount} ETB*\n` +
 
-  `📱 Recipient: \`${result.withdrawal.account_number}\`\n` +
+  `📱 Recipient: \`${displayAccountNumber(result.withdrawal.account_number)}\`\n` +
 
   `👤 Account name: *${mdEsc(result.withdrawal.account_name || "—")}*\n\n` +
 
-  `💳 Paid from: \`${result.payment_account_number}\`\n` +
+  `💳 Paid from: \`${displayAccountNumber(result.payment_account_number)}\`\n` +
 
   `💰 Account balance after: *${result.payment_account_balance_after} ETB*\n` +
 
@@ -8443,7 +8443,7 @@ await respond("reply", ctx,
 
           result.telegram_id,
 
-          tr(await getLang(result.telegram_id), "wd_approved_user", result.amount, result.withdrawal.account_number, result.mainBalance),
+          tr(await getLang(result.telegram_id), "wd_approved_user", result.amount, displayAccountNumber(result.withdrawal.account_number), result.mainBalance),
 
           {
 
@@ -8585,7 +8585,7 @@ bot.callbackQuery(
 
         `💰 Amount: *${withdrawal.amount} ETB*\n` +
 
-        `📱 Account: \`${withdrawal.account_number}\`\n` +
+        `📱 Account: \`${displayAccountNumber(withdrawal.account_number)}\`\n` +
 
         `👤 Account name: *${mdEsc(withdrawal.account_name || "—")}*\n\n` +
 
@@ -9206,10 +9206,10 @@ function manualDepositText(r) {
   const pm = r.pm_amharic_name || r.pm_name || "—";
   let t =
     `📥 *Deposit request #${r.id}*\n` +
-    `👤 Player: *${mdEsc(r.user_name || "Unknown")}*` + (r.user_phone ? ` (\`${r.user_phone}\`)` : "") + `\n` +
+    `👤 Player: *${mdEsc(r.user_name || "Unknown")}*` + (r.user_phone ? ` (\`${displayAccountNumber(r.user_phone)}\`)` : "") + `\n` +
     `🧾 Reference: \`${r.reference}\`\n` +
     `💳 Method: ${r.pm_emoji || ""} *${mdEsc(pm)}*\n` +
-    `📱 Account shown to player: \`${r.shown_account_number || "—"}\` ${mdEsc(r.shown_account_name || "")}\n` +
+    `📱 Account shown to player: \`${displayAccountNumber(r.shown_account_number) || "—"}\` ${mdEsc(r.shown_account_name || "")}\n` +
     `📅 ${bnWhen(r.created_at)}\n`;
   const msg = String(r.message || "").trim();
   if (msg && msg.toUpperCase() !== String(r.reference).toUpperCase()) {
@@ -9256,7 +9256,7 @@ async function handleNewWithdrawalApproval(created) {
   if (r && r.success) {
     try {
       await respond("send", r.telegram_id,
-        tr(await getLang(r.telegram_id), "wd_auto_approved_user", r.amount, r.account_number, r.mainBalance),
+        tr(await getLang(r.telegram_id), "wd_auto_approved_user", r.amount, displayAccountNumber(r.account_number), r.mainBalance),
         { parse_mode: "Markdown" });
     } catch (e) { console.error("auto withdrawal user message error:", e); }
 
@@ -9265,9 +9265,9 @@ async function handleNewWithdrawalApproval(created) {
       `🆔 #${r.withdrawal_id}\n` +
       `👤 Player: *${mdEsc(r.user_name || "Unknown")}*\n` +
       `💰 Amount: *${r.amount} ETB*\n` +
-      `📱 Send to: \`${r.account_number}\`\n` +
+      `📱 Send to: \`${displayAccountNumber(r.account_number)}\`\n` +
       `👤 Account name: *${mdEsc(r.account_name || "—")}*\n\n` +
-      `💳 Pay from: \`${r.payment_account_number}\` ${mdEsc(r.payment_account_name || "")}\n` +
+      `💳 Pay from: \`${displayAccountNumber(r.payment_account_number)}\` ${mdEsc(r.payment_account_name || "")}\n` +
       `💰 Account balance after: *${r.payment_account_balance_after} ETB*`
     );
     return true;
@@ -9792,7 +9792,7 @@ bot.on(
 
 
           await respond("reply", ctx, 
-            tr(lang, "tr_recipient_found", transfer.receiverName, transfer.receiverPhone, getWalletDisplayName(transfer.walletType, lang)),
+            tr(lang, "tr_recipient_found", transfer.receiverName, displayAccountNumber(transfer.receiverPhone), getWalletDisplayName(transfer.walletType, lang)),
 
             {
               parse_mode: "Markdown",
@@ -10197,7 +10197,7 @@ bot.on(
            * Confirmation.
            */
           await respond("reply", ctx, 
-            tr(lang, "tr_confirm_text", transfer.receiverName, transfer.receiverPhone, getWalletDisplayName(transfer.walletType, lang), formatTransferAmount(transfer.amount), formatTransferAmount(balance), formatTransferAmount(balance - transfer.amount)),
+            tr(lang, "tr_confirm_text", transfer.receiverName, displayAccountNumber(transfer.receiverPhone), getWalletDisplayName(transfer.walletType, lang), formatTransferAmount(transfer.amount), formatTransferAmount(balance), formatTransferAmount(balance - transfer.amount)),
 
             {
               parse_mode: "Markdown",
@@ -10317,7 +10317,7 @@ bot.on(
 
             `👤 Name: *${edit.accountName}*\n\n` +
 
-            `📱 Current account number: \`${edit.accountNumber}\`\n\n` +
+            `📱 Current account number: \`${displayAccountNumber(edit.accountNumber)}\`\n\n` +
 
             (
               isMobile
@@ -10415,7 +10415,7 @@ bot.on(
 
             `👤 Name: *${edit.accountName}*\n` +
 
-            `📱 Account: \`${edit.accountNumber}\`\n\n` +
+            `📱 Account: \`${displayAccountNumber(edit.accountNumber)}\`\n\n` +
 
             `💰 Current balance: *${edit.balance} ETB*\n\n` +
 
@@ -10833,7 +10833,7 @@ bot.on(
 
               `🧾 First: *${createdAccount.first_name || "-"}* · Middle: *${createdAccount.middle_name || "-"}* · Last: *${createdAccount.last_name || "-"}*\n` +
 
-              `📱 Account: \`${createdAccount.account_number}\`\n` +
+              `📱 Account: \`${displayAccountNumber(createdAccount.account_number)}\`\n` +
 
               `💰 Initial Balance: *${createdAccount.balance} ETB*\n` +
 
@@ -11392,8 +11392,8 @@ bot.on(
             }*\n` +
 
             `📱 Phone: \`${
-              user.phone ||
-              text
+              displayAccountNumber(user.phone ||
+              text)
             }\`\n` +
 
             `🔐 Current Role: *${currentRole}*\n\n` +
@@ -11480,8 +11480,8 @@ bot.on(
             }*\n` +
 
             `📱 Phone: \`${
-              user.phone ||
-              text
+              displayAccountNumber(user.phone ||
+              text)
             }\`\n\n` +
 
             `💎 *Total Deposits*\n` +
@@ -11758,7 +11758,7 @@ pendingWithdrawal[telegramId] = {
 
         return respond("reply", ctx, 
 
-          tr(await getLang(telegramId).catch(() => null), "wd_account_ok_ask_name", accountNumber),
+          tr(await getLang(telegramId).catch(() => null), "wd_account_ok_ask_name", displayAccountNumber(accountNumber)),
 
           {
             parse_mode:
@@ -12102,7 +12102,7 @@ if (
   return respond("reply", ctx, 
     "👤 *Recipient Found*\n\n" +
     `👤 Name: *${mdEsc(user.name || "Unknown")}*\n` +
-    `📱 Phone: \`${user.phone || phone}\`\n\n` +
+    `📱 Phone: \`${displayAccountNumber(user.phone || phone)}\`\n\n` +
     "Do you want to send the broadcast to this person?",
     {
       parse_mode: "Markdown",
@@ -12650,7 +12650,7 @@ bot.callbackQuery(
       await respond("edit", ctx, 
         "✅ *Broadcast sent successfully.*\n\n" +
         `👤 Recipient: ${recipient.name || "Unknown"}\n` +
-        `📱 Phone: \`${recipient.phone || "Unknown"}\``,
+        `📱 Phone: \`${displayAccountNumber(recipient.phone) || "Unknown"}\``,
         {
           parse_mode: "Markdown"
         }

@@ -186,6 +186,8 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" -v ON_ERROR_STOP=1 -f bbpback
   var role='', timer=null, busy=false, tab='ov';
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  // display only: Ethiopian numbers without the country code (251911234567 -> 0911234567)
+  function localPhone(n){ var s=String(n==null?'':n).trim(); var m=s.replace(/[\s\-()]/g,'').match(/^(?:\+?251)(\d{9})$/); return m?'0'+m[1]:s; }
   function n0(v){ return Number(v||0).toLocaleString(undefined,{maximumFractionDigits:0}); }
   function n2(v){ return Number(v||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
   function ago(s){ s=Number(s)||0; if(s<90) return s+'s'; if(s<5400) return Math.round(s/60)+' min'; if(s<172800) return (s/3600).toFixed(1)+' h'; return Math.round(s/86400)+' d'; }
@@ -316,7 +318,7 @@ psql "postgresql://USER:PASSWORD@HOST:PORT/DBNAME" -v ON_ERROR_STOP=1 -f bbpback
     $('live').innerHTML=tbl([['Game'],['Status'],['Stake',1],['Cartelas',1],['Gross pot',1],['Age'],['']],q.live.map(function(g){
       return '<tr><td><code>'+esc(g.game_code)+'</code></td><td>'+esc(g.status)+'</td><td class="n">'+n2(g.stake_amount)+'</td><td class="n">'+g.card_count+'</td><td class="n">'+n2(g.gross_pot)+'</td><td>'+ago(g.age_s)+'</td><td>'+(g.stuck?st('serious','stuck'):st('good','live'))+'</td></tr>'; }),'No game is running right now.');
     $('wdq').innerHTML=tbl([['#'],['Player'],['Amount',1],['Method'],['Account'],['Status'],['Waiting'],['Flags']],q.withdrawals.map(function(w){
-      return '<tr><td>'+w.id+'</td><td>'+esc(w.name)+'<br><small class="msg">'+esc(w.telegram_id)+'</small></td><td class="n">'+n2(w.amount)+'</td><td>'+esc(w.method||'')+'</td><td><code>'+esc(w.account_number||'')+'</code></td><td>'+esc(w.status)+'</td><td>'+ago(w.age_s)+'</td><td>'+(w.needs_review?(w.risk_flags||[]).map(function(f){return '<span class="flag">'+esc(f)+'</span>';}).join('')+'<br>'+st('warn','main admin only'):'')+'</td></tr>'; }),'No withdrawals waiting.');
+      return '<tr><td>'+w.id+'</td><td>'+esc(w.name)+'<br><small class="msg">'+esc(w.telegram_id)+'</small></td><td class="n">'+n2(w.amount)+'</td><td>'+esc(w.method||'')+'</td><td><code>'+esc(localPhone(w.account_number))+'</code></td><td>'+esc(w.status)+'</td><td>'+ago(w.age_s)+'</td><td>'+(w.needs_review?(w.risk_flags||[]).map(function(f){return '<span class="flag">'+esc(f)+'</span>';}).join('')+'<br>'+st('warn','main admin only'):'')+'</td></tr>'; }),'No withdrawals waiting.');
     $('depq').innerHTML=tbl([['#'],['Player'],['Amount',1],['Reference'],['Status'],['Waiting']],q.deposits.map(function(d){
       return '<tr><td>'+d.id+'</td><td>'+esc(d.name)+'<br><small class="msg">'+esc(d.telegram_id)+'</small></td><td class="n">'+n2(d.amount)+'</td><td><code>'+esc(d.reference||'')+'</code></td><td>'+esc(d.status)+'</td><td>'+(d.age_s>7200?st('warn',ago(d.age_s)):ago(d.age_s))+'</td></tr>'; }),'No deposits waiting.');
     $('flg').innerHTML=tbl([['#'],['Player'],['Amount',1],['Result'],['Flags'],['When']],q.flaggedRecent.map(function(w){
