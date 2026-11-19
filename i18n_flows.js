@@ -22,9 +22,38 @@ const FLOWS = {
   // ================= statistics =================
   stats_load_fail: { en: "❌ Could not load your statistics.", am: "❌ ስታቲስቲክስዎን መጫን አልተቻለም።" },
   stats_fail: { en: "❌ Unable to load statistics right now.", am: "❌ ስታቲስቲክስን አሁን መጫን አልተቻለም።" },
+  // s = db.getUserStatistics(): approved / pending / rejected amount + count for deposits and withdrawals
   stats_text: {
-    en: (s) => `📊 *YOUR STATISTICS*\n\n💎 Total Deposits: *${s.totalDeposits}*\n\n🏧 *Withdrawals*\n⏳ Pending Approval: *${s.pendingWithdrawals}*\n✅ Approved: *${s.approvedWithdrawals}*\n❌ Rejected: *${s.rejectedWithdrawals}*`,
-    am: (s) => `📊 *የእርስዎ ስታቲስቲክስ*\n\n💎 ጠቅላላ ገቢ: *${s.totalDeposits}*\n\n🏧 *ወጪዎች*\n⏳ ማረጋገጫ በመጠባበቅ ላይ: *${s.pendingWithdrawals}*\n✅ የጸደቁ: *${s.approvedWithdrawals}*\n❌ ውድቅ የተደረጉ: *${s.rejectedWithdrawals}*`
+    en: (s) => {
+      const L = (icon, label, a, n) => `${icon} ${label}: *${Number(a || 0).toFixed(2)} ETB* · ${n || 0}\n`;
+      return `📊 *YOUR STATISTICS*\n\n` +
+        `👤 Name: *${s.name || "—"}*\n📱 Phone: *${s.phone || "—"}*\n📅 Registered: *${s.registered || "—"}*\n` +
+        `${s.active ? "🟢" : "⚪️"} Active: *${s.active ? "Yes" : "No"}*\n${s.blocked ? "🚫" : "✅"} Blocked: *${s.blocked ? "Yes" : "No"}*\n\n` +
+        `💎 *Deposits*\n` +
+        L("✅", "Approved", s.approvedDepositAmount, s.approvedDepositCount) +
+        L("⏳", "Pending", s.pendingDepositAmount, s.pendingDepositCount) +
+        L("❌", "Rejected", s.rejectedDepositAmount, s.rejectedDepositCount) +
+        `\n🏧 *Withdrawals*\n` +
+        L("✅", "Approved", s.approvedWithdrawalAmount, s.approvedWithdrawalCount) +
+        L("⏳", "Pending", s.pendingWithdrawalAmount, s.pendingWithdrawalCount) +
+        L("❌", "Rejected", s.rejectedWithdrawalAmount, s.rejectedWithdrawalCount) +
+        `\n_Amount · number of requests_`;
+    },
+    am: (s) => {
+      const L = (icon, label, a, n) => `${icon} ${label}: *${Number(a || 0).toFixed(2)} ብር* · ${n || 0}\n`;
+      return `📊 *የእርስዎ ስታቲስቲክስ*\n\n` +
+        `👤 ስም: *${s.name || "—"}*\n📱 ስልክ: *${s.phone || "—"}*\n📅 የተመዘገቡበት ቀን: *${s.registered || "—"}*\n` +
+        `${s.active ? "🟢" : "⚪️"} ንቁ: *${s.active ? "አዎ" : "አይ"}*\n${s.blocked ? "🚫" : "✅"} የታገደ: *${s.blocked ? "አዎ" : "አይ"}*\n\n` +
+        `💎 *ገቢዎች*\n` +
+        L("✅", "የጸደቁ", s.approvedDepositAmount, s.approvedDepositCount) +
+        L("⏳", "በመጠባበቅ ላይ", s.pendingDepositAmount, s.pendingDepositCount) +
+        L("❌", "ውድቅ የተደረጉ", s.rejectedDepositAmount, s.rejectedDepositCount) +
+        `\n🏧 *ወጪዎች*\n` +
+        L("✅", "የጸደቁ", s.approvedWithdrawalAmount, s.approvedWithdrawalCount) +
+        L("⏳", "በመጠባበቅ ላይ", s.pendingWithdrawalAmount, s.pendingWithdrawalCount) +
+        L("❌", "ውድቅ የተደረጉ", s.rejectedWithdrawalAmount, s.rejectedWithdrawalCount) +
+        `\n_መጠን · የጥያቄዎች ብዛት_`;
+    }
   },
   stats_btn_dep: { en: "💎 Deposits", am: "💎 ገቢ" },
   stats_btn_wd: { en: "🏧 Withdrawals", am: "🏧 ወጪ" },

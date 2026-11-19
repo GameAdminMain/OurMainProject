@@ -2029,20 +2029,63 @@ async registerUser(telegramId, name, phone) {
 
   // ---------- admin: registered users list (newest first, paged) ----------
   // Test bot accounts (telegram_id 1-300, stress_test.js) are left out.
-  // Deposits count when status = 'completed', withdrawals when status = 'approved'.
+  // Deposit / withdrawal statuses follow getUserFinancialStatistics():
+  //   deposits  approved = deposits 'completed'; pending = deposits 'pending'/'processing' + manual requests 'pending';
+  //             rejected = manual requests 'rejected' (manual requests use requested_amount; no amount -> *_unk)
+  //   withdrawals approved = 'approved'; pending = 'pending'/'processing'; rejected = 'rejected'
+  // Returns the page rows plus the same totals for all (non-test) users.
   async getRegisteredUsersPage(page = 1, pageSize = 5) {
+    await ensureApprovalSchema();   // manual_deposit_requests (+ requested_amount) is created lazily
     const size = Math.max(1, Math.min(25, Number(pageSize) || 5));
-    const { rows: c } = await pool.query(
-      `SELECT COUNT(*)::int AS total FROM users WHERE telegram_id NOT BETWEEN 1 AND 300`
-    );
-    const total = c[0]?.total || 0;
+    const MONEY = `
+      SELECT
+        COALESCE(d.ap_n, 0)::int  AS dep_ap_n,  COALESCE(d.ap_a, 0)::numeric(18,2) AS dep_ap_a,
+        (COALESCE(d.pe_n, 0) + COALESCE(m.pe_n, 0))::int AS dep_pe_n,
+        (COALESCE(d.pe_a, 0) + COALESCE(m.pe_a, 0))::numeric(18,2) AS dep_pe_a,
+        COALESCE(m.pe_unk, 0)::int AS dep_pe_unk,
+        COALESCE(m.rj_n, 0)::int  AS dep_rj_n,  COALESCE(m.rj_a, 0)::numeric(18,2) AS dep_rj_a,
+        COALESCE(m.rj_unk, 0)::int AS dep_rj_unk,
+        COALESCE(w.ap_n, 0)::int  AS wd_ap_n,   COALESCE(w.ap_a, 0)::numeric(18,2) AS wd_ap_a,
+        COALESCE(w.pe_n, 0)::int  AS wd_pe_n,   COALESCE(w.pe_a, 0)::numeric(18,2) AS wd_pe_a,
+        COALESCE(w.rj_n, 0)::int  AS wd_rj_n,   COALESCE(w.rj_a, 0)::numeric(18,2) AS wd_rj_a`;
+    const DEP = `SELECT COUNT(*) FILTER (WHERE x.status = 'completed') AS ap_n,
+                        SUM(x.amount) FILTER (WHERE x.status = 'completed') AS ap_a,
+                        COUNT(*) FILTER (WHERE x.status IN ('pending','processing')) AS pe_n,
+                        SUM(x.amount) FILTER (WHERE x.status IN ('pending','processing')) AS pe_a
+                 FROM deposits x`;
+    const MDR = `SELECT COUNT(*) FILTER (WHERE x.status = 'pending') AS pe_n,
+                        SUM(x.requested_amount) FILTER (WHERE x.status = 'pending') AS pe_a,
+                        COUNT(*) FILTER (WHERE x.status = 'pending' AND x.requested_amount IS NULL) AS pe_unk,
+                        COUNT(*) FILTER (WHERE x.status = 'rejected') AS rj_n,
+                        SUM(x.requested_amount) FILTER (WHERE x.status = 'rejected') AS rj_a,
+                        COUNT(*) FILTER (WHERE x.status = 'rejected' AND x.requested_amount IS NULL) AS rj_unk
+                 FROM manual_deposit_requests x`;
+    const WD = `SELECT COUNT(*) FILTER (WHERE x.status = 'approved') AS ap_n,
+                       SUM(x.amount) FILTER (WHERE x.status = 'approved') AS ap_a,
+                       COUNT(*) FILTER (WHERE x.status IN ('pending','processing')) AS pe_n,
+                       SUM(x.amount) FILTER (WHERE x.status IN ('pending','processing')) AS pe_a,
+                       COUNT(*) FILTER (WHERE x.status = 'rejected') AS rj_n,
+                       SUM(x.amount) FILTER (WHERE x.status = 'rejected') AS rj_a
+                FROM withdrawals x`;
+    const REAL = `u.telegram_id NOT BETWEEN 1 AND 300`;
+
+    // all-users totals (and the user count for paging)
+    const { rows: t } = await pool.query(`
+      WITH real_users AS (SELECT u.id FROM users u WHERE ${REAL})
+      ${MONEY}, (SELECT COUNT(*) FROM real_users)::int AS users_total
+      FROM (${DEP} WHERE x.user_id IN (SELECT id FROM real_users)) d,
+           (${MDR} WHERE x.user_id IN (SELECT id FROM real_users)) m,
+           (${WD}  WHERE x.user_id IN (SELECT id FROM real_users)) w
+    `);
+    const totals = t[0] || {};
+    const total = totals.users_total || 0;
     const pages = Math.max(1, Math.ceil(total / size));
     const p = Math.max(1, Math.min(pages, Number(page) || 1));
+
     const { rows } = await pool.query(
       `
-      SELECT u.id, u.name, u.phone, u.telegram_id, u.is_active, u.is_blocked, u.created_at,
-             COALESCE(d.total, 0)::numeric(18,2) AS dep_total, COALESCE(d.n, 0)::int AS dep_n,
-             COALESCE(w.total, 0)::numeric(18,2) AS wd_total,  COALESCE(w.n, 0)::int AS wd_n,
+      ${MONEY},
+             u.id, u.name, u.phone, u.telegram_id, u.is_active, u.is_blocked, u.created_at,
              -- last online: same rule as the admin user card (getAdminUserLastActivity)
              GREATEST(
                u.last_seen,
@@ -2052,21 +2095,16 @@ async registerUser(telegramId, name, phone) {
                (SELECT MAX(w2.created_at) FROM withdrawals w2 WHERE w2.user_id = u.id)
              ) AS last_online
       FROM users u
-      LEFT JOIN LATERAL (
-        SELECT SUM(x.amount) AS total, COUNT(*) AS n
-        FROM deposits x WHERE x.user_id = u.id AND x.status = 'completed'
-      ) d ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT SUM(x.amount) AS total, COUNT(*) AS n
-        FROM withdrawals x WHERE x.user_id = u.id AND x.status = 'approved'
-      ) w ON TRUE
-      WHERE u.telegram_id NOT BETWEEN 1 AND 300
+      LEFT JOIN LATERAL (${DEP} WHERE x.user_id = u.id) d ON TRUE
+      LEFT JOIN LATERAL (${MDR} WHERE x.user_id = u.id) m ON TRUE
+      LEFT JOIN LATERAL (${WD}  WHERE x.user_id = u.id) w ON TRUE
+      WHERE ${REAL}
       ORDER BY u.created_at DESC NULLS LAST, u.id DESC
       LIMIT $1 OFFSET $2
       `,
       [size, (p - 1) * size]
     );
-    return { rows, total, page: p, pages, pageSize: size };
+    return { rows, totals, total, page: p, pages, pageSize: size };
   },
 
   // ---------- admin bonus management (bonus_admin.sql) ----------
@@ -2181,49 +2219,15 @@ async registerUser(telegramId, name, phone) {
   // USER STATISTICS
   // ============================================================
 
+  // the player's own Statistics screen: deposits and withdrawals as approved / pending / rejected,
+  // amount + count each. Same rules as the admin USER FINANCIAL STATISTICS (getUserFinancialStatistics).
   async getUserStatistics(
     telegramId
   ) {
 
     const { rows } =
       await pool.query(
-        `
-        SELECT
-
-          (
-            SELECT COUNT(*)
-            FROM deposits d
-            WHERE d.user_id = u.id
-          ) AS total_deposits,
-
-          (
-            SELECT COUNT(*)
-            FROM withdrawals w
-            WHERE w.user_id = u.id
-              AND w.status IN ('pending', 'processing')
-          ) AS pending_withdrawals,
-
-          (
-            SELECT COUNT(*)
-            FROM withdrawals w
-            WHERE w.user_id = u.id
-              AND w.status = 'approved'
-          ) AS approved_withdrawals,
-
-          (
-            SELECT COUNT(*)
-            FROM withdrawals w
-            WHERE w.user_id = u.id
-              AND w.status = 'rejected'              
-          ) AS rejected_withdrawals
-
-        FROM users u
-
-        WHERE u.telegram_id = $1
-          AND u.is_active = TRUE
-
-        LIMIT 1
-        `,
+        `SELECT id FROM users WHERE telegram_id = $1 AND is_active = TRUE LIMIT 1`,
         [telegramId]
       );
 
@@ -2231,26 +2235,19 @@ async registerUser(telegramId, name, phone) {
       return null;
     }
 
-    const r = rows[0];
+    const s = await this.getUserFinancialStatistics(rows[0].id);
+
+    if (!s) {
+      return null;
+    }
 
     return {
-      totalDeposits:
-        Number(r.total_deposits || 0),
-
-      pendingWithdrawals:
-        Number(
-          r.pending_withdrawals || 0
-        ),
-
-      approvedWithdrawals:
-        Number(
-          r.approved_withdrawals || 0
-        ),
-
-      rejectedWithdrawals:
-        Number(
-          r.rejected_withdrawals || 0
-        )
+      ...s,
+      // kept for older callers (counts only)
+      totalDeposits: s.approvedDepositCount,
+      pendingWithdrawals: s.pendingWithdrawalCount,
+      approvedWithdrawals: s.approvedWithdrawalCount,
+      rejectedWithdrawals: s.rejectedWithdrawalCount
     };
   },
 
