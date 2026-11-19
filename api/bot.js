@@ -3611,6 +3611,7 @@ bot.callbackQuery(/^admin_reg_users_(\d+)$/, async (ctx) => {
     const body = res.rows.length
       ? res.rows.map((u, i) =>
           `<b>${start + i + 1}. ${htmlEsc(u.name || "Unknown")}</b>\n` +
+          `    🆔 ID: <code>${u.id}</code> · TG: <code>${htmlEsc(u.telegram_id)}</code>\n` +
           `    📱 <code>${htmlEsc(displayAccountNumber(u.phone) || "N/A")}</code>\n` +
           `    💰 Deposits: <b>${histMoney(u.dep_total)} ETB</b> · ${u.dep_n}\n` +
           `    🏧 Withdrawals: <b>${histMoney(u.wd_total)} ETB</b> · ${u.wd_n}\n` +
