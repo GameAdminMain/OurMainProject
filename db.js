@@ -2042,7 +2042,15 @@ async registerUser(telegramId, name, phone) {
       `
       SELECT u.id, u.name, u.phone, u.telegram_id, u.is_active, u.is_blocked, u.created_at,
              COALESCE(d.total, 0)::numeric(18,2) AS dep_total, COALESCE(d.n, 0)::int AS dep_n,
-             COALESCE(w.total, 0)::numeric(18,2) AS wd_total,  COALESCE(w.n, 0)::int AS wd_n
+             COALESCE(w.total, 0)::numeric(18,2) AS wd_total,  COALESCE(w.n, 0)::int AS wd_n,
+             -- last online: same rule as the admin user card (getAdminUserLastActivity)
+             GREATEST(
+               u.last_seen,
+               (SELECT MAX(bp.joined_at) FROM bingo_participants bp WHERE bp.user_id = u.id),
+               (SELECT MAX(d2.created_at) FROM deposits d2 WHERE d2.user_id = u.id),
+               (SELECT MAX(r2.created_at) FROM manual_deposit_requests r2 WHERE r2.user_id = u.id),
+               (SELECT MAX(w2.created_at) FROM withdrawals w2 WHERE w2.user_id = u.id)
+             ) AS last_online
       FROM users u
       LEFT JOIN LATERAL (
         SELECT SUM(x.amount) AS total, COUNT(*) AS n
