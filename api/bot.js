@@ -3562,6 +3562,13 @@ bot.callbackQuery(
 
               [
                 {
+                  text: "👥 Registered Users",
+                  callback_data: "admin_reg_users_1"
+                }
+              ],
+
+              [
+                {
                   text: "🏠 Home",
                   callback_data: "admin_home"
                 }
@@ -3587,6 +3594,48 @@ bot.callbackQuery(
 
   }
 );
+// ============================================================
+// ADMIN: REGISTERED USERS LIST (statistics menu)
+// callback: admin_reg_users_<page>  · 5 users per page, newest registration first
+// ============================================================
+const REG_USERS_PAGE_SIZE = 5;
+
+bot.callbackQuery(/^admin_reg_users_(\d+)$/, async (ctx) => {
+  try {
+    await answerCallback(ctx);
+    const admin = await getCurrentAdminPermission(ctx, "statistics");
+    if (!admin) return;
+    const res = await db.getRegisteredUsersPage(Number(ctx.match[1]) || 1, REG_USERS_PAGE_SIZE);
+    const start = (res.page - 1) * res.pageSize;
+    const status = (u) => u.is_blocked ? "🚫 Blocked" : (u.is_active === false ? "⏸ Inactive" : "✅ Active");
+    const body = res.rows.length
+      ? res.rows.map((u, i) =>
+          `<b>${start + i + 1}. ${htmlEsc(u.name || "Unknown")}</b>\n` +
+          `    📱 <code>${htmlEsc(displayAccountNumber(u.phone) || "N/A")}</code>\n` +
+          `    💰 Deposits: <b>${histMoney(u.dep_total)} ETB</b> · ${u.dep_n}\n` +
+          `    🏧 Withdrawals: <b>${histMoney(u.wd_total)} ETB</b> · ${u.wd_n}\n` +
+          `    ${status(u)} · 📅 ${htmlEsc(bnWhen(u.created_at))}`
+        ).join("\n\n")
+      : "No registered users yet.";
+    const nav = [];
+    if (res.page > 1) nav.push({ text: "⬅️ Previous", callback_data: `admin_reg_users_${res.page - 1}` });
+    if (res.page < res.pages) nav.push({ text: "Next ➡️", callback_data: `admin_reg_users_${res.page + 1}` });
+    const keyboard = [];
+    if (nav.length) keyboard.push(nav);
+    keyboard.push([{ text: "⬅️ Statistics", callback_data: "admin_statistics_menu" }, { text: "🏠 Home", callback_data: "admin_home" }]);
+    await respond("edit", ctx,
+      `👥 <b>Registered Users</b>\n` +
+      `<i>Newest first · approved deposits and withdrawals (amount · count) · times in Ethiopia time</i>\n` +
+      `Total: <b>${res.total}</b> · Page <b>${res.page}/${res.pages}</b>\n\n${body}`,
+      { parse_mode: "HTML", reply_markup: { inline_keyboard: keyboard } }
+    );
+  } catch (err) {
+    if (/message is not modified/i.test(String(err.message))) return;
+    console.error("Registered users list error:", err);
+    await respond("reply", ctx, "❌ Could not load the registered users list.");
+  }
+});
+
 // ============================================================
 // ADMIN FINANCIAL STATISTICS
 // ============================================================

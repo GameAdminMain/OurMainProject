@@ -2027,6 +2027,40 @@ async registerUser(telegramId, name, phone) {
     return rows;
   },
 
+  // ---------- admin: registered users list (newest first, paged) ----------
+  // Test bot accounts (telegram_id 1-300, stress_test.js) are left out.
+  // Deposits count when status = 'completed', withdrawals when status = 'approved'.
+  async getRegisteredUsersPage(page = 1, pageSize = 5) {
+    const size = Math.max(1, Math.min(25, Number(pageSize) || 5));
+    const { rows: c } = await pool.query(
+      `SELECT COUNT(*)::int AS total FROM users WHERE telegram_id NOT BETWEEN 1 AND 300`
+    );
+    const total = c[0]?.total || 0;
+    const pages = Math.max(1, Math.ceil(total / size));
+    const p = Math.max(1, Math.min(pages, Number(page) || 1));
+    const { rows } = await pool.query(
+      `
+      SELECT u.id, u.name, u.phone, u.telegram_id, u.is_active, u.is_blocked, u.created_at,
+             COALESCE(d.total, 0)::numeric(18,2) AS dep_total, COALESCE(d.n, 0)::int AS dep_n,
+             COALESCE(w.total, 0)::numeric(18,2) AS wd_total,  COALESCE(w.n, 0)::int AS wd_n
+      FROM users u
+      LEFT JOIN LATERAL (
+        SELECT SUM(x.amount) AS total, COUNT(*) AS n
+        FROM deposits x WHERE x.user_id = u.id AND x.status = 'completed'
+      ) d ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT SUM(x.amount) AS total, COUNT(*) AS n
+        FROM withdrawals x WHERE x.user_id = u.id AND x.status = 'approved'
+      ) w ON TRUE
+      WHERE u.telegram_id NOT BETWEEN 1 AND 300
+      ORDER BY u.created_at DESC NULLS LAST, u.id DESC
+      LIMIT $1 OFFSET $2
+      `,
+      [size, (p - 1) * size]
+    );
+    return { rows, total, page: p, pages, pageSize: size };
+  },
+
   // ---------- admin bonus management (bonus_admin.sql) ----------
   async bonusAdminCall(sql, params) {
     try {
