@@ -3136,7 +3136,7 @@ html body.auth-pending .bottom-nav:not(#authX),html body.auth-pending #balanceEl
 /* ===== winners-screen-css ===== */
 html body #screenWinners{padding:6px clamp(10px,3.4vw,14px) 90px!important}
 .wn-title{font-family:'Orbitron',sans-serif;font-weight:900;text-align:center;font-size:17px;color:var(--gold);margin:14px 0 12px}
-.wn-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;position:sticky;top:0;z-index:5;padding:6px 0 10px;background:linear-gradient(var(--bg) 75%,transparent)}
+.wn-tabs{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;position:sticky;top:0;z-index:5;padding:6px 0 10px;background:linear-gradient(var(--bg) 75%,transparent)}
 .wn-tab{border:1px solid rgba(139,92,246,.35);background:#24104b;color:#c9bff0;border-radius:10px;padding:9px 2px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit}
 .wn-tab.active{background:linear-gradient(135deg,#8b5cf6,#5b2fd0);color:#fff;border-color:rgba(255,255,255,.4);box-shadow:0 3px 10px rgba(91,47,208,.45)}
 .wn-list{display:flex;flex-direction:column;gap:7px}
@@ -5006,8 +5006,6 @@ html body #screenLobby:not(#q1):not(#q2) .lobby-conn.error{color:#ffe7b8;border-
     <div class="wn-tabs" id="wnTabs" role="tablist">
       <button type="button" class="wn-tab active" data-p="today" data-lt="wnToday" onclick="setWinnersPeriod('today')">ዛሬ</button>
       <button type="button" class="wn-tab" data-p="7d" data-lt="wn7" onclick="setWinnersPeriod('7d')">7 ቀን</button>
-      <button type="button" class="wn-tab" data-p="30d" data-lt="wn30" onclick="setWinnersPeriod('30d')">30 ቀን</button>
-      <button type="button" class="wn-tab" data-p="1y" data-lt="wn1y" onclick="setWinnersPeriod('1y')">1 ዓመት</button>
     </div>
     <div id="wnList" class="wn-list"></div>
     <div id="wnMe" class="wn-me" style="display:none"></div>

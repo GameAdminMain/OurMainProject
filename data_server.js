@@ -436,14 +436,23 @@ app.post('/api/admin/statement',adminRoute(true,async(req,res)=>{
 try{ reconcile.startSchedule(bingoDb); }catch(e){ console.error('reconciliation schedule:',e.message); }
 
 // ─── TOP WINNERS (Winners screen) ─────────────────────────────
-// GET /api/top-winners?period=today|7d|30d|1y   (signed-in Telegram players only)
-// Only display names, totals and counts are returned - never phone numbers or Telegram IDs.
+// GET /api/top-winners?period=today|7d   (signed-in Telegram players only)
+// Only masked display names, totals and counts are returned - never phone numbers or Telegram IDs.
+// Other players' names are partly hidden (e.g. "Abebe" -> "A***e"); a player sees their own name in full.
+function maskWinnerName(raw){
+  const ch=Array.from(String(raw||'').trim().replace(/\s+/g,' '));
+  if(!ch.length) return 'P***r';
+  if(ch.length===1) return ch[0]+'***';
+  if(ch.length===2) return ch[0]+'***';
+  const stars='*'.repeat(Math.min(5,Math.max(3,ch.length-2)));
+  return ch[0]+stars+ch[ch.length-1];
+}
 const WINNERS_TTL_MS=60*1000;
 const winnersCache=new Map(); // period -> { t, rows }
 app.get('/api/top-winners', async(req,res)=>{
   const who=resolveTelegramId(req.headers['x-telegram-init-data'],String(req.query.tid||''));
   if(!who) return res.status(401).json({error:'Open the game from Telegram'});
-  const period=['today','7d','30d','1y'].includes(req.query.period)?req.query.period:'today';
+  const period=['today','7d'].includes(req.query.period)?req.query.period:'today';
   try{
     let hit=winnersCache.get(period);
     if(!hit||Date.now()-hit.t>WINNERS_TTL_MS){
@@ -452,7 +461,11 @@ app.get('/api/top-winners', async(req,res)=>{
       winnersCache.set(period,hit);
     }
     const all=hit.rows;
-    const shape=(r,i)=>({rank:i+1,name:String(r.name||'Player').slice(0,40),total:Number(r.total)||0,wins:Number(r.wins)||0,best:Number(r.best)||0,me:String(r.telegram_id)===String(who)});
+    const shape=(r,i)=>{
+      const me=String(r.telegram_id)===String(who);
+      const name=me?String(r.name||'Player').slice(0,40):maskWinnerName(r.name);
+      return {rank:i+1,name,total:Number(r.total)||0,wins:Number(r.wins)||0,best:Number(r.best)||0,me};
+    };
     const top=all.slice(0,20).map(shape);
     const myIdx=all.findIndex(r=>String(r.telegram_id)===String(who));
     const me=myIdx>=0?shape(all[myIdx],myIdx):null;
