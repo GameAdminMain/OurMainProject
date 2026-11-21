@@ -3616,17 +3616,19 @@ bot.callbackQuery(/^admin_reg_users_(\d+)$/, async (ctx) => {
     const res = await db.getRegisteredUsersPage(Number(ctx.match[1]) || 1, REG_USERS_PAGE_SIZE);
     const start = (res.page - 1) * res.pageSize;
     const status = (u) => u.is_blocked ? "🚫 Blocked" : (u.is_active === false ? "⏸ Inactive" : "🟢 Active");
-    // "✅ 150.00 (2) · ⏳ 10.00 (1) · ❌ 0.00 (0)"  (❔n = requests saved without an amount)
-    const part = (icon, a, n, unk = 0) => `${icon} ${histMoney(a)} (${n}${unk > 0 ? ` ❔${unk}` : ""})`;
-    const depLine = (r) => part("✅", r.dep_ap_a, r.dep_ap_n) + " · " + part("⏳", r.dep_pe_a, r.dep_pe_n, r.dep_pe_unk) + " · " + part("❌", r.dep_rj_a, r.dep_rj_n, r.dep_rj_unk);
-    const wdLine = (r) => part("✅", r.wd_ap_a, r.wd_ap_n) + " · " + part("⏳", r.wd_pe_a, r.wd_pe_n) + " · " + part("❌", r.wd_rj_a, r.wd_rj_n);
+    // "<b>150.00 ETB</b> · 2"  (approved amount · count)
+    const amt = (a, n) => `<b>${histMoney(a)} ETB</b> · ${n}`;
+    const moneyLines = (r, pad) =>
+      `${pad}💰 Deposits: ${amt(r.dep_a, r.dep_n)}\n` +
+      `${pad}🏧 Withdrawals: ${amt(r.wd_a, r.wd_n)}\n` +
+      `${pad}🎁 Bonuses received: ${amt(r.bn_a, r.bn_n)}\n` +
+      `${pad}🎁 Bonus balance now: <b>${histMoney(r.bn_bal)} ETB</b>\n`;
     const body = res.rows.length
       ? res.rows.map((u, i) =>
           `<b>${start + i + 1}. ${htmlEsc(u.name || "Unknown")}</b>\n` +
           `    🆔 ID: <code>${u.id}</code> · TG: <code>${htmlEsc(u.telegram_id)}</code>\n` +
           `    📱 <code>${htmlEsc(displayAccountNumber(u.phone) || "N/A")}</code>\n` +
-          `    💰 Deposits: ${depLine(u)}\n` +
-          `    🏧 Withdrawals: ${wdLine(u)}\n` +
+          moneyLines(u, "    ") +
           `    ${status(u)} · 📅 Registered: ${htmlEsc(bnWhen(u.created_at))}\n` +
           `    🕒 Last online: ${u.last_online ? `${htmlEsc(bnWhen(u.last_online))} (${admAgo(u.last_online)})` : "never"}`
         ).join("\n\n")
@@ -3639,10 +3641,9 @@ bot.callbackQuery(/^admin_reg_users_(\d+)$/, async (ctx) => {
     keyboard.push([{ text: "⬅️ Statistics", callback_data: "admin_statistics_menu" }, { text: "🏠 Home", callback_data: "admin_home" }]);
     await respond("edit", ctx,
       `👥 <b>Registered Users</b>\n` +
-      `<i>Newest first · ✅ approved ⏳ pending ❌ rejected: ETB (count) · times in Ethiopia time</i>\n\n` +
+      `<i>Newest first · approved deposits and withdrawals: amount · count · times in Ethiopia time</i>\n\n` +
       `<b>All users (${res.total})</b>\n` +
-      `💰 Deposits: ${depLine(res.totals)}\n` +
-      `🏧 Withdrawals: ${wdLine(res.totals)}\n\n` +
+      moneyLines(res.totals, "") + `\n` +
       `Page <b>${res.page}/${res.pages}</b>\n\n${body}`,
       { parse_mode: "HTML", reply_markup: { inline_keyboard: keyboard } }
     );

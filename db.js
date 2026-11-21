@@ -2029,53 +2029,32 @@ async registerUser(telegramId, name, phone) {
 
   // ---------- admin: registered users list (newest first, paged) ----------
   // Test bot accounts (telegram_id 1-300, stress_test.js) are left out.
-  // Deposit / withdrawal statuses follow getUserFinancialStatistics():
-  //   deposits  approved = deposits 'completed'; pending = deposits 'pending'/'processing' + manual requests 'pending';
-  //             rejected = manual requests 'rejected' (manual requests use requested_amount; no amount -> *_unk)
-  //   withdrawals approved = 'approved'; pending = 'pending'/'processing'; rejected = 'rejected'
+  //   deposits    = status 'completed' (approved), amount + count
+  //   withdrawals = status 'approved', amount + count
+  //   bonuses     = bonuses received (user_bonuses active/completed/expired/forfeited, same rule as the
+  //                 Manage User card), amount + count, plus the current Bonus wallet balance
   // Returns the page rows plus the same totals for all (non-test) users.
   async getRegisteredUsersPage(page = 1, pageSize = 5) {
-    await ensureApprovalSchema();   // manual_deposit_requests (+ requested_amount) is created lazily
     const size = Math.max(1, Math.min(25, Number(pageSize) || 5));
     const MONEY = `
       SELECT
-        COALESCE(d.ap_n, 0)::int  AS dep_ap_n,  COALESCE(d.ap_a, 0)::numeric(18,2) AS dep_ap_a,
-        (COALESCE(d.pe_n, 0) + COALESCE(m.pe_n, 0))::int AS dep_pe_n,
-        (COALESCE(d.pe_a, 0) + COALESCE(m.pe_a, 0))::numeric(18,2) AS dep_pe_a,
-        COALESCE(m.pe_unk, 0)::int AS dep_pe_unk,
-        COALESCE(m.rj_n, 0)::int  AS dep_rj_n,  COALESCE(m.rj_a, 0)::numeric(18,2) AS dep_rj_a,
-        COALESCE(m.rj_unk, 0)::int AS dep_rj_unk,
-        COALESCE(w.ap_n, 0)::int  AS wd_ap_n,   COALESCE(w.ap_a, 0)::numeric(18,2) AS wd_ap_a,
-        COALESCE(w.pe_n, 0)::int  AS wd_pe_n,   COALESCE(w.pe_a, 0)::numeric(18,2) AS wd_pe_a,
-        COALESCE(w.rj_n, 0)::int  AS wd_rj_n,   COALESCE(w.rj_a, 0)::numeric(18,2) AS wd_rj_a`;
-    const DEP = `SELECT COUNT(*) FILTER (WHERE x.status = 'completed') AS ap_n,
-                        SUM(x.amount) FILTER (WHERE x.status = 'completed') AS ap_a,
-                        COUNT(*) FILTER (WHERE x.status IN ('pending','processing')) AS pe_n,
-                        SUM(x.amount) FILTER (WHERE x.status IN ('pending','processing')) AS pe_a
-                 FROM deposits x`;
-    const MDR = `SELECT COUNT(*) FILTER (WHERE x.status = 'pending') AS pe_n,
-                        SUM(x.requested_amount) FILTER (WHERE x.status = 'pending') AS pe_a,
-                        COUNT(*) FILTER (WHERE x.status = 'pending' AND x.requested_amount IS NULL) AS pe_unk,
-                        COUNT(*) FILTER (WHERE x.status = 'rejected') AS rj_n,
-                        SUM(x.requested_amount) FILTER (WHERE x.status = 'rejected') AS rj_a,
-                        COUNT(*) FILTER (WHERE x.status = 'rejected' AND x.requested_amount IS NULL) AS rj_unk
-                 FROM manual_deposit_requests x`;
-    const WD = `SELECT COUNT(*) FILTER (WHERE x.status = 'approved') AS ap_n,
-                       SUM(x.amount) FILTER (WHERE x.status = 'approved') AS ap_a,
-                       COUNT(*) FILTER (WHERE x.status IN ('pending','processing')) AS pe_n,
-                       SUM(x.amount) FILTER (WHERE x.status IN ('pending','processing')) AS pe_a,
-                       COUNT(*) FILTER (WHERE x.status = 'rejected') AS rj_n,
-                       SUM(x.amount) FILTER (WHERE x.status = 'rejected') AS rj_a
-                FROM withdrawals x`;
+        COALESCE(d.n, 0)::int AS dep_n, COALESCE(d.a, 0)::numeric(18,2) AS dep_a,
+        COALESCE(w.n, 0)::int AS wd_n,  COALESCE(w.a, 0)::numeric(18,2) AS wd_a,
+        COALESCE(b.n, 0)::int AS bn_n,  COALESCE(b.a, 0)::numeric(18,2) AS bn_a,
+        COALESCE(wb.bal, 0)::numeric(18,2) AS bn_bal`;
+    const DEP = `SELECT COUNT(*) AS n, SUM(x.amount) AS a FROM deposits x WHERE x.status = 'completed'`;
+    const WD  = `SELECT COUNT(*) AS n, SUM(x.amount) AS a FROM withdrawals x WHERE x.status = 'approved'`;
+    const BN  = `SELECT COUNT(*) AS n, SUM(x.awarded_amount) AS a FROM user_bonuses x
+                 WHERE x.status IN ('active', 'completed', 'expired', 'forfeited')`;
+    const BAL = `SELECT SUM(x.bonus_balance) AS bal FROM user_wallet_balances x WHERE TRUE`;
     const REAL = `u.telegram_id NOT BETWEEN 1 AND 300`;
 
     // all-users totals (and the user count for paging)
+    const IN_REAL = `AND x.user_id IN (SELECT id FROM real_users)`;
     const { rows: t } = await pool.query(`
       WITH real_users AS (SELECT u.id FROM users u WHERE ${REAL})
       ${MONEY}, (SELECT COUNT(*) FROM real_users)::int AS users_total
-      FROM (${DEP} WHERE x.user_id IN (SELECT id FROM real_users)) d,
-           (${MDR} WHERE x.user_id IN (SELECT id FROM real_users)) m,
-           (${WD}  WHERE x.user_id IN (SELECT id FROM real_users)) w
+      FROM (${DEP} ${IN_REAL}) d, (${WD} ${IN_REAL}) w, (${BN} ${IN_REAL}) b, (${BAL} ${IN_REAL}) wb
     `);
     const totals = t[0] || {};
     const total = totals.users_total || 0;
@@ -2095,9 +2074,10 @@ async registerUser(telegramId, name, phone) {
                (SELECT MAX(w2.created_at) FROM withdrawals w2 WHERE w2.user_id = u.id)
              ) AS last_online
       FROM users u
-      LEFT JOIN LATERAL (${DEP} WHERE x.user_id = u.id) d ON TRUE
-      LEFT JOIN LATERAL (${MDR} WHERE x.user_id = u.id) m ON TRUE
-      LEFT JOIN LATERAL (${WD}  WHERE x.user_id = u.id) w ON TRUE
+      LEFT JOIN LATERAL (${DEP} AND x.user_id = u.id) d ON TRUE
+      LEFT JOIN LATERAL (${WD}  AND x.user_id = u.id) w ON TRUE
+      LEFT JOIN LATERAL (${BN}  AND x.user_id = u.id) b ON TRUE
+      LEFT JOIN LATERAL (${BAL} AND x.user_id = u.id) wb ON TRUE
       WHERE ${REAL}
       ORDER BY u.created_at DESC NULLS LAST, u.id DESC
       LIMIT $1 OFFSET $2
