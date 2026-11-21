@@ -3651,7 +3651,7 @@ bot.callbackQuery(/^admin_reg_users_(\d+)$/, async (ctx) => {
     if (res.page < res.pages) nav.push({ text: "Next ➡️", callback_data: `admin_reg_users_${res.page + 1}` });
     const keyboard = [];
     if (nav.length) keyboard.push(nav);
-    keyboard.push([{ text: "⬅️ Statistics", callback_data: "admin_statistics_menu" }, { text: "🏠 Home", callback_data: "admin_home" }]);
+    keyboard.push([{ text: "⬅️ Statistics", callback_data: "admin_statistics_menu" }, { text: "🏠 Home", callback_data: "admin_reg_users_home" }]);
     await respond("edit", ctx,
       `👥 <b>Registered Users</b>\n` +
       `<i>Newest first · approved deposits and withdrawals: amount · count · times in Ethiopia time</i>\n\n` +
@@ -3664,6 +3664,24 @@ bot.callbackQuery(/^admin_reg_users_(\d+)$/, async (ctx) => {
     if (/message is not modified/i.test(String(err.message))) return;
     console.error("Registered users list error:", err);
     await respond("reply", ctx, "❌ Could not load the registered users list.");
+  }
+});
+
+// Home from the Registered Users list: the list message is REPLACED by the home menu
+// (deleted, then the home screen is sent), so the long list does not stay in the chat.
+bot.callbackQuery("admin_reg_users_home", async (ctx) => {
+  await answerCallback(ctx);
+  clearPendingState(ctx.from.id);
+  const admin = await getCurrentAdmin(ctx);
+  if (!admin) return denyAccess(ctx);
+  try {
+    const user = await db.getUserByTelegramId(admin.telegram_id);
+    if (!user) return respond("reply", ctx, "❌ Admin account was not found.");
+    try { await ctx.deleteMessage(); }                // a message older than 48 h cannot be deleted: blank it instead
+    catch (_) { await respond("edit", ctx, "🏠 Home").catch(() => {}); }
+    await showHome(ctx, user);
+  } catch (err) {
+    console.error("Registered users home error:", err);
   }
 });
 
