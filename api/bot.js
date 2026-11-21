@@ -3608,6 +3608,18 @@ bot.callbackQuery(
 // ============================================================
 const REG_USERS_PAGE_SIZE = 5;
 
+// short Ethiopia-time date for the list: "21/11/26 17:42"
+function regShortWhen(ts) {
+  if (!ts) return "—";
+  try {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-GB", {
+      timeZone: "Africa/Addis_Ababa", day: "2-digit", month: "2-digit", year: "2-digit",
+      hour: "2-digit", minute: "2-digit", hourCycle: "h23"
+    }).formatToParts(new Date(ts)).map(x => [x.type, x.value]));
+    return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
+  } catch (_) { return "—"; }
+}
+
 bot.callbackQuery(/^admin_reg_users_(\d+)$/, async (ctx) => {
   try {
     await answerCallback(ctx);
@@ -3629,8 +3641,9 @@ bot.callbackQuery(/^admin_reg_users_(\d+)$/, async (ctx) => {
           `    🆔 ID: <code>${u.id}</code> · TG: <code>${htmlEsc(u.telegram_id)}</code>\n` +
           `    📱 <code>${htmlEsc(displayAccountNumber(u.phone) || "N/A")}</code>\n` +
           moneyLines(u, "    ") +
-          `    ${status(u)} · 📅 Registered: ${htmlEsc(bnWhen(u.created_at))}\n` +
-          `    🕒 Last online: ${u.last_online ? `${htmlEsc(bnWhen(u.last_online))} (${admAgo(u.last_online)})` : "never"}`
+          `    ${status(u)}\n` +
+          `    📅 Reg: ${regShortWhen(u.created_at)}\n` +
+          `    🕒 Last: ${u.last_online ? `${regShortWhen(u.last_online)} (${admAgo(u.last_online)})` : "never"}`
         ).join("\n\n")
       : "No registered users yet.";
     const nav = [];
